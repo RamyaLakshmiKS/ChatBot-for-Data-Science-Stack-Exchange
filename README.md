@@ -5,8 +5,8 @@
 This project involves analyzing the Data Science Stack Exchange dataset to gain insights into user engagement, post trends, and interaction patterns. The findings will help in developing a conversational agent for improved recommendations and responses.
 
 **Repository Structure:**  
-reports/ – Contains the submitted project report with detailed findings and analysis.  
-scripts/ – Includes the Python notebook used for data preprocessing, EDA, and visualization.
+- reports/ – Contains the submitted project report with detailed findings and analysis.  
+- scripts/ – Includes the Python notebook used for data preprocessing, EDA, and visualization.  
 **Dataset:**  
 The dataset used for this project is available on Kaggle:
 [Data Science Stack Exchange](https://www.kaggle.com/datasets/aneeshtickoo/data-science-stack-exchange/data?select=metadata.txt)
