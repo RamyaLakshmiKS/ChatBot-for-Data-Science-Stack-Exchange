@@ -6,7 +6,8 @@ This project involves analyzing the Data Science Stack Exchange dataset to gain 
 
 **Repository Structure:**  
 - reports/ – Contains the submitted project report with detailed findings and analysis.  
-- scripts/ – Includes the Python notebook used for data preprocessing, EDA, and visualization.  
+- scripts/ – Includes the Python notebook used for data preprocessing, EDA, and visualization.
+
 **Dataset:**  
 The dataset used for this project is available on Kaggle:
 [Data Science Stack Exchange](https://www.kaggle.com/datasets/aneeshtickoo/data-science-stack-exchange/data?select=metadata.txt)
