@@ -171,6 +171,9 @@ def initialize_chatbot():
 
 # Streamlit app
 def main():
+    # Set the page configuration with the desired tab header
+    st.set_page_config(page_title="Ask, don't browse", page_icon=":robot_face:")
+
     logging.debug("Starting Streamlit app")
     st.title("Chat with Stack Exchange")
     st.markdown(
