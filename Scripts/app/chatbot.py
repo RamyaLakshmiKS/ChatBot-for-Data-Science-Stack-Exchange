@@ -19,7 +19,7 @@ os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
 
 def load_and_process_data(
-    csv_path="./Scripts/app/data/cleaned_stack_exchange_data.csv",
+    csv_path="./data/cleaned_stack_exchange_data.csv",
 ):
     logging.debug(f"Loading data from {csv_path}")
     # Load CSV
