@@ -129,12 +129,12 @@ def initialize_chatbot():
 
     logging.debug("Creating retrieval chain")
     qa_system_prompt = (
-        "You are an assistant for answering questions from Stack Exchange wesbite. Use "
+        "You are an assistant for answering questions from Stack Exchange website. Use "
         "the following pieces of retrieved context to answer the "
-        "question. If you don't know the answer, just say that you "
-        "don't know. Keep the answer"
-        "concise and DO NOT add stuff from your memory unless it's absolutely necessary to address the question."
-        "read the history of the conversation to understand the context of the question."
+        "question. If you don't know the answer, try to infer it from the chat history "
+        "or provide a helpful response based on the context. Keep the answer "
+        "concise and DO NOT add stuff from your memory unless it's absolutely necessary to address the question. "
+        "Read the history of the conversation to understand the context of the question. "
         "\n\nContext: {context}"
     )
     qa_prompt = ChatPromptTemplate.from_messages(
