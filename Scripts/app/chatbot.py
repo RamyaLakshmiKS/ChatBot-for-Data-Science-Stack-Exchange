@@ -80,14 +80,20 @@ def create_vector_store(texts):
     return vector_store
 
 
+def load_vector_store(input_path="./data/faiss_index"):
+    logging.debug(f"Loading FAISS vector store from {input_path}")
+    # Load FAISS vector store from disk
+    vector_store = FAISS.load_local(input_path, GoogleGenerativeAIEmbeddings(model="models/embedding-001"))
+    logging.debug("FAISS vector store loaded successfully")
+    return vector_store
+
+
 def initialize_chatbot():
     logging.debug("Initializing chatbot")
-    # Load and process data
-    texts = load_and_process_data()
 
-    logging.debug("Creating vector store")
-    # Create vector store
-    vector_store = create_vector_store(texts)
+    logging.debug("Loading vector store")
+    # Load vector store
+    vector_store = load_vector_store()
 
     logging.debug("Initializing Gemini LLM")
     # Initialize Gemini LLM
