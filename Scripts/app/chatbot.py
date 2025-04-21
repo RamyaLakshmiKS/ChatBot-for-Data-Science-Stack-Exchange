@@ -7,12 +7,15 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_huggingface import HuggingFaceEmbeddings
 import streamlit as st
 import logging
-from ingest_data import query_batch_indices
+import torch
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 # Replace hardcoded API key with Streamlit secrets
 logging.debug("Setting Google API key from Streamlit secrets.")
@@ -81,10 +84,16 @@ def create_vector_store(texts):
     return vector_store
 
 
-def load_vector_store(input_path="./data/faiss_index"):
+def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
     logging.debug(f"Loading FAISS vector store from {input_path}")
-    # Load FAISS vector store from disk
-    vector_store = FAISS.load_local(input_path, GoogleGenerativeAIEmbeddings(model="models/embedding-001"))
+    # Use HuggingFaceEmbeddings for consistency
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-mpnet-base-v2",
+        model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"},
+    )
+    vector_store = FAISS.load_local(
+        input_path, embeddings, allow_dangerous_deserialization=True
+    )
     logging.debug("FAISS vector store loaded successfully")
     return vector_store
 
@@ -92,17 +101,14 @@ def load_vector_store(input_path="./data/faiss_index"):
 def initialize_chatbot():
     logging.debug("Initializing chatbot")
 
-    logging.debug("Loading batch FAISS indices")
-    # Use batch FAISS indices for retrieval
-    def batch_retriever(query, top_k=3):
-        return query_batch_indices(query, output_path="./data/faiss_index", top_k=top_k)
+    logging.debug("Loading final FAISS index")
+    # Load final FAISS index for retrieval
+    vector_store = load_vector_store()
 
     logging.debug("Initializing Gemini LLM")
-    # Initialize Gemini LLM
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
     logging.debug("Creating history-aware retriever")
-    # Create history-aware retriever
     contextualize_q_system_prompt = (
         "Given a chat history and the latest user question "
         "which might reference context in the chat history, "
@@ -118,17 +124,16 @@ def initialize_chatbot():
         ]
     )
     history_aware_retriever = create_history_aware_retriever(
-        llm, batch_retriever, contextualize_q_prompt
+        llm, vector_store.as_retriever(), contextualize_q_prompt
     )
 
     logging.debug("Creating retrieval chain")
-    # Create retrieval chain
     qa_system_prompt = (
         "You are an assistant for question-answering tasks. Use "
         "the following pieces of retrieved context to answer the "
         "question. If you don't know the answer, just say that you "
         "don't know. Use three sentences maximum and keep the answer "
-        "concise."
+        "concise.\n\nContext: {context}"
     )
     qa_prompt = ChatPromptTemplate.from_messages(
         [
@@ -138,7 +143,25 @@ def initialize_chatbot():
         ]
     )
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-    chatbot = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+
+    # Create the retrieval chain
+    retrieval_chain = create_retrieval_chain(
+        history_aware_retriever, question_answer_chain
+    )
+
+    # Ensure the chatbot is callable by directly using the retrieval chain
+    def chatbot(input_data):
+        formatted_input = {
+            "input": input_data["question"],
+            "chat_history": input_data.get("chat_history", []),  # Default to an empty list if not provided
+        }
+        response = retrieval_chain.invoke(formatted_input)
+
+        # Log the retrieved context for debugging purposes
+        retrieved_context = response.get("context", "No context retrieved")
+        logging.debug(f"Retrieved context: {retrieved_context}")
+
+        return response
 
     logging.debug("Chatbot initialization complete")
     return chatbot
@@ -173,10 +196,18 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # Prepare chat history for the chatbot
+        chat_history = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in st.session_state.messages
+        ]
+
         # Get response from chatbot
         with st.chat_message("assistant"):
             logging.debug("Getting response from chatbot")
-            response = st.session_state.chatbot({"question": prompt})
+            response = st.session_state.chatbot(
+                {"question": prompt, "chat_history": chat_history}
+            )
             logging.debug(f"Chatbot response: {response['answer']}")
             st.markdown(response["answer"])
             # Add assistant response to chat history
