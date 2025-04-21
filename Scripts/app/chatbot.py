@@ -129,11 +129,13 @@ def initialize_chatbot():
 
     logging.debug("Creating retrieval chain")
     qa_system_prompt = (
-        "You are an assistant for question-answering tasks. Use "
+        "You are an assistant for answering questions from Stack Exchange wesbite. Use "
         "the following pieces of retrieved context to answer the "
         "question. If you don't know the answer, just say that you "
-        "don't know. Use three sentences maximum and keep the answer "
-        "concise.\n\nContext: {context}"
+        "don't know. Keep the answer"
+        "concise and DO NOT add stuff from your memory unless it's absolutely necessary to address the question."
+        "read the history of the conversation to understand the context of the question."
+        "\n\nContext: {context}"
     )
     qa_prompt = ChatPromptTemplate.from_messages(
         [
@@ -170,10 +172,11 @@ def initialize_chatbot():
 # Streamlit app
 def main():
     logging.debug("Starting Streamlit app")
-    st.title("Data Science Q&A Chatbot")
+    st.title("Chat with Stack Exchange")
     st.markdown(
-        "Ask questions about data science, machine learning, and related topics!"
+        "Stop wasting time searching for answers on the stack exchange website!"
     )
+    st.markdown("Ask questions about data science, machine learning, and related topics!", unsafe_allow_html=True)
 
     # Initialize session state for chat history and chatbot
     if "messages" not in st.session_state:
