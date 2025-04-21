@@ -9,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains.combine_documents import create_stuff_documents_chain
 import streamlit as st
 import logging
+from ingest_data import query_batch_indices
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -91,9 +92,10 @@ def load_vector_store(input_path="./data/faiss_index"):
 def initialize_chatbot():
     logging.debug("Initializing chatbot")
 
-    logging.debug("Loading vector store")
-    # Load vector store
-    vector_store = load_vector_store()
+    logging.debug("Loading batch FAISS indices")
+    # Use batch FAISS indices for retrieval
+    def batch_retriever(query, top_k=3):
+        return query_batch_indices(query, output_path="./data/faiss_index", top_k=top_k)
 
     logging.debug("Initializing Gemini LLM")
     # Initialize Gemini LLM
@@ -116,7 +118,7 @@ def initialize_chatbot():
         ]
     )
     history_aware_retriever = create_history_aware_retriever(
-        llm, vector_store.as_retriever(search_kwargs={"k": 3}), contextualize_q_prompt
+        llm, batch_retriever, contextualize_q_prompt
     )
 
     logging.debug("Creating retrieval chain")

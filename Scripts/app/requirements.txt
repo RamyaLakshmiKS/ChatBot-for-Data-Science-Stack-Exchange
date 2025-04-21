@@ -1,8 +1,8 @@
 streamlit
 pandas
 langchain-google-genai
-langchain-community
 faiss-cpu
 tqdm
 sentence_transformers
 torch
+langchain_huggingface

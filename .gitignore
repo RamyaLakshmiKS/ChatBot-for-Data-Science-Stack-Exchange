@@ -126,3 +126,6 @@ dmypy.
 
 #streamlit
 *.streamlit/
+
+# Ignore all faiss_index files
+faiss_index/
