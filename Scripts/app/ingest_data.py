@@ -100,28 +100,6 @@ def create_and_save_vector_store(texts, output_path="./data/faiss_index", batch_
     logging.info(f"Final FAISS vector store saved to {final_path}")
     return vector_store
 
-def query_batch_indices(query, output_path="./data/faiss_index", top_k=5):
-    logging.info("Loading batch FAISS indices for querying")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-mpnet-base-v2",
-        model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"}
-    )
-
-    batch_files = [
-        os.path.join(output_path, f) for f in os.listdir(output_path) if f.startswith("batch_") and f.endswith(".faiss")
-    ]
-
-    results = []
-    for batch_file in tqdm(batch_files, desc="Querying batches"):
-        vector_store = FAISS.load_local(batch_file, embeddings, allow_dangerous_deserialization=True)
-        batch_results = vector_store.similarity_search(query, k=top_k)
-        results.extend(batch_results)
-
-    # Sort results by score (if available) or relevance
-    results = sorted(results, key=lambda x: x.metadata.get("score", 0), reverse=True)
-
-    return results[:top_k]
-
 if __name__ == "__main__":
     logging.info("Starting data ingestion process")
     texts = load_and_process_data()
