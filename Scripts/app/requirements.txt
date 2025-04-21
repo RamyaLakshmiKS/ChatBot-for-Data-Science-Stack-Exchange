@@ -7,3 +7,4 @@ sentence_transformers
 torch
 langchain_huggingface
 langchain_community
+tf-keras
