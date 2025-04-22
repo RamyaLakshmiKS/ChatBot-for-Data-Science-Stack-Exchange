@@ -1,0 +1,10 @@
+streamlit
+pandas
+langchain-google-genai
+faiss-cpu
+tqdm
+sentence_transformers
+torch
+langchain_huggingface
+langchain_community
+tf-keras
