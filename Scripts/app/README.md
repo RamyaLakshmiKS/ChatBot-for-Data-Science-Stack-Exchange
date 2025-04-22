@@ -1,6 +1,6 @@
 # Chatbot Application
 
-This chatbot application is designed to specialize in answering data science-related questions. It uses a Retrieval-Augmented Generation (RAG) approach, combining a retrieval system to fetch relevant documents and a generation system to create conversational responses. The chatbot is tailored to assist users with data science concepts, techniques, and best practices.
+This chatbot application is designed to answer data science-related questions using a Retrieval-Augmented Generation (RAG) approach. It combines a retrieval system to fetch relevant documents and a generation system to create conversational responses. The chatbot is tailored to assist users with data science concepts, techniques, and best practices.
 
 ## Features
 
@@ -9,51 +9,53 @@ This chatbot application is designed to specialize in answering data science-rel
 - Easy-to-use interface for loading datasets and asking questions.
 - Customizable to work with any dataset in CSV format.
 
-## Requirements
+## Setup Instructions
 
-Ensure you have Python installed on your system. Install the required dependencies using the following command:
+### 1. Install Dependencies
+
+Ensure you have Python installed on your system. Install the required dependencies by running the following command in the `Scripts/app` directory:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## How to Use
+### 2. Data Preparation
 
-### 1. Load Data
+Prepare a dataset in CSV format with a column named `content`. The dataset should contain data science-related content. Place the dataset in the `Scripts/app/data/` directory or any other location of your choice.
 
-Prepare a dataset in CSV format with a column named `content`. The dataset should contain data science-related content. Place the dataset in a known location and note its file path.
+### 3. Data Ingestion
 
-### 2. Initialize the Chatbot
+Use the `ingest_data.py` script to preprocess the dataset and build the FAISS index for efficient retrieval. Run the following command:
 
-Import the chatbot class and initialize it with the path to your dataset:
-
-```python
-from chatbot import Chatbot
-
-# Initialize the chatbot
-chatbot = Chatbot(data_path="/path/to/your/dataset.csv")
-chatbot.setup()
+```bash
+python ingest_data.py --data_path data/cleaned_stack_exchange_data.csv
 ```
 
-### 3. Ask Questions
+Replace `data/cleaned_stack_exchange_data.csv` with the path to your dataset if it is located elsewhere.
 
-Use the `get_response` method to ask data science-related questions and get responses:
+### 4. Running the Chatbot with Streamlit
 
-```python
-response = chatbot.get_response("What is the difference between supervised and unsupervised learning?")
-print(response)
+To start the chatbot application using Streamlit, follow these steps:
+
+1. Ensure the FAISS index is built and the dataset is prepared.
+2. Run the Streamlit app using the following command:
+
+```bash
+streamlit run app.py
 ```
 
-### Example
+3. Open the provided URL in your browser to interact with the chatbot.
 
-```python
-from chatbot import Chatbot
+### Example Streamlit Code
 
-# Initialize the chatbot
-chatbot = Chatbot(data_path="/path/to/your/dataset.csv")
-chatbot.setup()
+Run the chatbot locally by running the following command in the app directory.
 
-# Ask a question
-response = chatbot.get_response("Can you explain the concept of overfitting in machine learning?")
-print(response)
 ```
+streamlit run chatbot.py
+```
+
+## Additional Notes
+
+- Ensure the FAISS index is built before running the chatbot.
+- The chatbot is designed to work with datasets containing data science-related content. For other domains, you may need to retrain or fine-tune the model.
+- For troubleshooting or further customization, refer to the `chatbot.py` and `ingest_data.py` scripts.
