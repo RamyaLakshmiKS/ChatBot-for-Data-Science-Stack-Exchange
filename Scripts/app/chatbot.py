@@ -11,6 +11,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 import streamlit as st
 import logging
 import torch
+import joblib
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -98,12 +100,35 @@ def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
     return vector_store
 
 
+# Load the LightGBM model during chatbot initialization
+def load_lgbm_model(model_path="./model/lgbm_model.pkl"):
+    logging.debug(f"Loading LightGBM model from {model_path}")
+    model = joblib.load(model_path)
+    logging.debug("LightGBM model loaded successfully")
+    return model
+
+
+# Suggest better questions based on vector store context
+def suggest_better_questions(question, vector_store):
+    logging.debug("Suggesting better questions based on vector store context")
+    # Retrieve context from the vector store
+    retrieved_docs = vector_store.similarity_search(question, k=3)
+    suggestions = [
+        f"Consider asking about: {doc.metadata.get('title', 'No title')}"
+        for doc in retrieved_docs
+    ]
+    return "\n".join(suggestions)
+
+
 def initialize_chatbot():
     logging.debug("Initializing chatbot")
 
     logging.debug("Loading final FAISS index")
     # Load final FAISS index for retrieval
     vector_store = load_vector_store()
+
+    logging.debug("Loading LightGBM model")
+    lgbm_model = load_lgbm_model()
 
     logging.debug("Initializing Gemini LLM")
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
@@ -153,17 +178,29 @@ def initialize_chatbot():
 
     # Ensure the chatbot is callable by directly using the retrieval chain
     def chatbot(input_data):
-        formatted_input = {
-            "input": input_data["question"],
-            "chat_history": input_data.get("chat_history", []),  # Default to an empty list if not provided
-        }
-        response = retrieval_chain.invoke(formatted_input)
+        question = input_data["question"]
+        chat_history = input_data.get("chat_history", [])
 
-        # Log the retrieved context for debugging purposes
-        retrieved_context = response.get("context", "No context retrieved")
-        logging.debug(f"Retrieved context: {retrieved_context}")
+        # Predict using LightGBM model
+        logging.debug("Making prediction with LightGBM model")
+        # prediction = lgbm_model.predict(np.array([question]).reshape(1, -1))  # Ensure features match model input
+        prediction = lgbm_model.predict(question)  # Assuming the model can handle raw text input
 
-        return response
+        if prediction[0] == 1:  # Question likely to have an answer
+            formatted_input = {
+                "input": question,
+                "chat_history": chat_history,
+            }
+            response = retrieval_chain.invoke(formatted_input)
+
+            # Log the retrieved context for debugging purposes
+            retrieved_context = response.get("context", "No context retrieved")
+            logging.debug(f"Retrieved context: {retrieved_context}")
+
+            return response
+        else:  # Suggest better questions
+            suggestions = suggest_better_questions(question, vector_store)
+            return {"answer": f"Your question might not receive an answer. Here are some suggestions:\n{suggestions}"}
 
     logging.debug("Chatbot initialization complete")
     return chatbot
