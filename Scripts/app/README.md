@@ -54,6 +54,33 @@ Run the chatbot locally by running the following command in the app directory.
 streamlit run chatbot.py
 ```
 
+### 6. Adding Google API Key
+
+To enable the chatbot to use Google AI services, you need to add your Google API key. Follow these steps:
+
+1. Create a `.streamlit` directory in the root of your project if it doesn't already exist:
+
+```bash
+mkdir -p .streamlit
+```
+
+2. Create a `secrets.toml` file inside the `.streamlit` directory:
+
+```bash
+touch .streamlit/secrets.toml
+```
+
+3. Add your Google API key to the `secrets.toml` file in the following format:
+
+```toml
+[google]
+GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"
+```
+
+Replace `YOUR_GOOGLE_API_KEY` with the actual API key obtained from Google AI Studio.
+
+4. Save the file. The Streamlit app will automatically load the API key from this file when it runs.
+
 ## Additional Notes
 
 - Ensure the FAISS index is built before running the chatbot.
