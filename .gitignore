@@ -132,3 +132,4 @@ faiss_index/
 
 # csv data
 *.csv
+*.xml

@@ -10,3 +10,4 @@ langchain_community
 tf-keras
 lightgbm
 joblib
+nltk
