@@ -129,3 +129,7 @@ dmypy.
 
 # Ignore all faiss_index files
 faiss_index/
+
+# csv data
+*.csv
+*.xml

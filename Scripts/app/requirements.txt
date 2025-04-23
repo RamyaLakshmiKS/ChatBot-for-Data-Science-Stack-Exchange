@@ -8,3 +8,6 @@ torch
 langchain_huggingface
 langchain_community
 tf-keras
+lightgbm
+joblib
+nltk
