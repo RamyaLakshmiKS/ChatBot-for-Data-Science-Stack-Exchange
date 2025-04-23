@@ -120,6 +120,85 @@ def suggest_better_questions(question, vector_store):
     return "\n".join(suggestions)
 
 
+# Add predictive answer quality assessment
+def evaluate_question_quality(question_text, model):
+    logging.debug("Evaluating question quality")
+    # Extract features from the question text (ensure feature extraction matches training)
+    features = extract_features_from_text(question_text)  # Placeholder for actual feature extraction logic
+    answer_probability = model.predict_proba([features])[0][1]
+    return answer_probability
+
+# Add question improvement suggestions
+def suggest_improvements(question_text, model):
+    logging.debug("Generating improvement suggestions")
+    features = extract_features_from_text(question_text)  # Placeholder for actual feature extraction logic
+    import shap
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values([features])
+    # Generate suggestions based on SHAP values (placeholder logic)
+    suggestions = generate_suggestions_from_shap(shap_values, features)  # Placeholder for actual suggestion logic
+    return suggestions
+
+def generate_suggestions_from_shap(shap_values, features):
+    """
+    Generate suggestions for improving a question based on SHAP values.
+
+    Args:
+        shap_values (list): SHAP values for the features.
+        features (list): The original feature values.
+
+    Returns:
+        str: Suggestions for improving the question.
+    """
+    logging.debug("Generating suggestions from SHAP values")
+    suggestions = []
+
+    # Example logic: Check which features have the most negative impact
+    for i, shap_value in enumerate(shap_values[0]):
+        if shap_value < -0.1:  # Threshold for significant negative impact
+            if i == 0:
+                suggestions.append("Consider making your question longer.")
+            elif i == 1:
+                suggestions.append("Add more details to your question.")
+            elif i == 3:
+                suggestions.append("Ensure your question is clear and ends with a question mark.")
+
+    return "\n".join(suggestions)
+
+def extract_features_from_doc(doc):
+    """
+    Extract features from a document for scoring with the LightGBM model.
+
+    Args:
+        doc (Document): A LangChain Document object.
+
+    Returns:
+        list: A list of features extracted from the document.
+    """
+    logging.debug("Extracting features from document")
+
+    # Example feature extraction logic (replace with actual logic from model training):
+    text = doc.page_content
+    features = extract_features_from_text(text)  # Reuse the text-based feature extraction
+
+    # Add metadata-based features (if applicable)
+    features.append(doc.metadata.get("score", 0))  # Example: Score of the post
+    features.append(doc.metadata.get("view_count", 0))  # Example: View count of the post
+
+    return features
+
+# Modify hybrid retrieval system
+def retrieve_documents(query, vector_store, model):
+    logging.debug("Retrieving documents with hybrid scoring")
+    docs = vector_store.similarity_search(query, k=10)
+    scored_docs = []
+    for doc in docs:
+        features = extract_features_from_doc(doc)  # Placeholder for actual feature extraction logic
+        quality_score = model.predict_proba([features])[0][1]
+        scored_docs.append((doc, quality_score))
+    return sorted(scored_docs, key=lambda x: x[1], reverse=True)
+
+
 def initialize_chatbot():
     logging.debug("Initializing chatbot")
 
@@ -181,29 +260,61 @@ def initialize_chatbot():
         question = input_data["question"]
         chat_history = input_data.get("chat_history", [])
 
-        # Predict using LightGBM model
-        logging.debug("Making prediction with LightGBM model")
-        # prediction = lgbm_model.predict(np.array([question]).reshape(1, -1))  # Ensure features match model input
-        prediction = lgbm_model.predict(question)  # Assuming the model can handle raw text input
+        # Predict question quality
+        logging.debug("Predicting question quality")
+        quality_score = evaluate_question_quality(question, lgbm_model)
 
-        if prediction[0] == 1:  # Question likely to have an answer
+        if quality_score > 0.5:  # Threshold for good quality question
             formatted_input = {
                 "input": question,
                 "chat_history": chat_history,
             }
             response = retrieval_chain.invoke(formatted_input)
-
-            # Log the retrieved context for debugging purposes
-            retrieved_context = response.get("context", "No context retrieved")
-            logging.debug(f"Retrieved context: {retrieved_context}")
-
             return response
-        else:  # Suggest better questions
-            suggestions = suggest_better_questions(question, vector_store)
+        else:
+            # Suggest improvements if the question quality is low
+            suggestions = suggest_improvements(question, lgbm_model)
             return {"answer": f"Your question might not receive an answer. Here are some suggestions:\n{suggestions}"}
 
     logging.debug("Chatbot initialization complete")
     return chatbot
+
+
+def extract_features_from_text(text):
+    """
+    Extract features from the input text for the LightGBM model.
+    This function should replicate the feature engineering steps used during model training.
+
+    Args:
+        text (str): The input text (e.g., question content).
+
+    Returns:
+        list: A list of features extracted from the text.
+    """
+    logging.debug("Extracting features from text")
+
+    # Example feature extraction logic (replace with actual logic from model training):
+    features = []
+
+    # Feature 1: Length of the text
+    features.append(len(text))
+
+    # Feature 2: Number of words in the text
+    features.append(len(text.split()))
+
+    # Feature 3: Number of unique words
+    features.append(len(set(text.split())))
+
+    # Feature 4: Presence of question mark
+    features.append(1 if '?' in text else 0)
+
+    # Feature 5: Average word length
+    words = text.split()
+    avg_word_length = sum(len(word) for word in words) / len(words) if words else 0
+    features.append(avg_word_length)
+
+    logging.debug(f"Extracted features: {features}")
+    return features
 
 
 # Streamlit app
