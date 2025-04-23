@@ -243,13 +243,12 @@ def predict_question_quality_with_gemini(question_text, llm):
         "Provide a high quality score between 0 and 1. "
         "With 1 being awarded to a question closely related to questions that will be asked in data stack exchange and 0 being awarded to a question that is not related to data stack exchange. "
         "You will only give a JSON response with the following format: {\"score\": <float>}. Nothing else."
-        "You are a question quality evaluator. Your task is to assess how well-structured, "
-                "clear, and complete a given question is. Pay attention to the use of grammar, clarity, "
-                "presence of abbreviations, and whether the question can be easily understood without additional context.\n\n"
-                "Return a JSON object with the following keys:\n"
-                "- 'score': A float score between 0.0 (poor quality) and 1.0 (excellent quality).\n"
-                "- 'suggestions': A list of concise improvements if needed, such as expanding abbreviations, rephrasing for clarity, or adding missing context.\n\n"
-                "Be fair and constructive. Only give a high score (e.g., > 0.8) if the question is clearly worded, unambiguous, and self-contained."),
+        "Your task is to assess how well-structured, "
+        "clear, and complete a given question is. Pay attention to the use of grammar, clarity, "
+        "presence of abbreviations, and whether the question can be easily understood without additional context.\n\n"
+        "- 'score': A float score between 0.0 (poor quality) and 1.0 (excellent quality).\n"
+        "- 'suggestions': A list of concise improvements if needed, such as expanding abbreviations, rephrasing for clarity, or adding missing context.\n\n"
+        "Be fair and constructive. Only give a high score (e.g., > 0.8) if the question is clearly worded, unambiguous, and self-contained."),
         ("human", question_text)
     ]
     with st.spinner("Evaluating question quality..."):
