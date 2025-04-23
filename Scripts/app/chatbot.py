@@ -1,4 +1,6 @@
+import json
 import os
+import traceback
 import pandas as pd
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -13,6 +15,8 @@ import logging
 import torch
 import joblib
 import numpy as np
+import time
+import asyncio
 
 # Configure logging
 logging.basicConfig(
@@ -37,14 +41,6 @@ def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
     return vector_store
 
 
-# Load the LightGBM model during chatbot initialization
-def load_lgbm_model(model_path=".\..\milestone_2\lgbm_model.pkl"):
-    logging.debug(f"Loading LightGBM model from {model_path}")
-    model = joblib.load(model_path)
-    logging.debug("LightGBM model loaded successfully")
-    return model
-
-
 # Suggest better questions based on vector store context
 def suggest_better_questions(question, vector_store):
     logging.debug("Suggesting better questions based on vector store context")
@@ -56,14 +52,6 @@ def suggest_better_questions(question, vector_store):
     ]
     return "\n".join(suggestions)
 
-
-# Add predictive answer quality assessment
-def evaluate_question_quality(question_text, model):
-    logging.debug("Evaluating question quality")
-    # Extract features from the question text (ensure feature extraction matches training)
-    features = extract_features_from_text(question_text)  # Placeholder for actual feature extraction logic
-    answer_probability = model.predict_proba([features])[0][1]
-    return answer_probability
 
 # Add question improvement suggestions
 def suggest_improvements(question_text, model):
@@ -140,11 +128,7 @@ def initialize_chatbot():
     logging.debug("Initializing chatbot")
 
     logging.debug("Loading final FAISS index")
-    # Load final FAISS index for retrieval
     vector_store = load_vector_store()
-
-    logging.debug("Loading LightGBM model")
-    lgbm_model = load_lgbm_model()
 
     logging.debug("Initializing Gemini LLM")
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
@@ -187,31 +171,20 @@ def initialize_chatbot():
     )
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 
-    # Create the retrieval chain
     retrieval_chain = create_retrieval_chain(
         history_aware_retriever, question_answer_chain
     )
 
-    # Ensure the chatbot is callable by directly using the retrieval chain
     def chatbot(input_data):
         question = input_data["question"]
         chat_history = input_data.get("chat_history", [])
 
-        # Predict question quality
-        logging.debug("Predicting question quality")
-        quality_score = evaluate_question_quality(question, lgbm_model)
-
-        if quality_score > 0.5:  # Threshold for good quality question
-            formatted_input = {
-                "input": question,
-                "chat_history": chat_history,
-            }
-            response = retrieval_chain.invoke(formatted_input)
-            return response
-        else:
-            # Suggest improvements if the question quality is low
-            suggestions = suggest_improvements(question, lgbm_model)
-            return {"answer": f"Your question might not receive an answer. Here are some suggestions:\n{suggestions}"}
+        formatted_input = {
+            "input": question,
+            "chat_history": chat_history,
+        }
+        response = retrieval_chain.invoke(formatted_input)
+        return response
 
     logging.debug("Chatbot initialization complete")
     return chatbot
@@ -253,6 +226,54 @@ def extract_features_from_text(text):
     logging.debug(f"Extracted features: {features}")
     return features
 
+# Replace LightGBM model with Gemini model for question quality prediction
+# Update the chatbot initialization to use Gemini for quality prediction
+logging.debug("Initializing Gemini LLM for question quality prediction")
+quality_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
+
+# Define a function to predict question quality using Gemini
+
+# Fix the input format for Gemini model and ensure proper response parsing
+# Update the prompt for question quality prediction to handle abbreviations and well-structured questions
+# Fix the response parsing logic to correctly extract the quality percentage
+def predict_question_quality_with_gemini(question_text, llm):
+    logging.debug("Predicting question quality using Gemini")
+    prompt = [
+        ("system", "You are a question quality evaluator. "
+        "Provide a high quality score between 0 and 1. "
+        "With 1 being awarded to a question closely related to questions that will be asked in data stack exchange and 0 being awarded to a question that is not related to data stack exchange. "
+        "You will only give a JSON response with the following format: {\"score\": <float>}. Nothing else."
+        "You are a question quality evaluator. Your task is to assess how well-structured, "
+                "clear, and complete a given question is. Pay attention to the use of grammar, clarity, "
+                "presence of abbreviations, and whether the question can be easily understood without additional context.\n\n"
+                "Return a JSON object with the following keys:\n"
+                "- 'score': A float score between 0.0 (poor quality) and 1.0 (excellent quality).\n"
+                "- 'suggestions': A list of concise improvements if needed, such as expanding abbreviations, rephrasing for clarity, or adding missing context.\n\n"
+                "Be fair and constructive. Only give a high score (e.g., > 0.8) if the question is clearly worded, unambiguous, and self-contained."),
+        ("human", question_text)
+    ]
+    with st.spinner("Evaluating question quality..."):
+        try:
+            response = llm.invoke(prompt)
+            logging.debug(f"Gemini response: {response}")
+            # Ensure the response is parsed correctly to extract the quality score
+            answer = json.loads(response.content)
+            logging.debug(f"Parsed Gemini response: {answer}")
+            return answer.get("score", 0.0)
+        except ValueError:
+            logging.error("Failed to parse quality score from Gemini response")
+            return 0.0
+        except Exception as e:
+            logging.error(f"Unexpected error during quality prediction: {e}")
+            traceback.print_exc()
+            return 0.0
+
+# Ensure asyncio event loop is properly initialized
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 # Streamlit app
 def main():
     # Set the page configuration with the desired tab header
@@ -273,45 +294,79 @@ def main():
         logging.debug("Initializing session state for chatbot")
         st.session_state.chatbot = initialize_chatbot()
 
-    # Store the LightGBM model in session state during chatbot initialization
-    if "lgbm_model" not in st.session_state:
-        logging.debug("Loading LightGBM model into session state")
-        st.session_state.lgbm_model = load_lgbm_model()
+    # Remove references to the LightGBM model and ensure only Gemini is used for question quality prediction
+    # Remove LightGBM model loading from session state
+    if "lgbm_model" in st.session_state:
+        del st.session_state["lgbm_model"]
 
     # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Modify the Streamlit app to display question quality
+    # Add aesthetic features to the UI
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background-color: #f5f5f5;
+            font-family: 'Arial', sans-serif;
+        }
+        .question-quality {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .suggestions {
+            font-size: 16px;
+            color: #FF5722;
+        }
+        .loading {
+            font-size: 20px;
+            color: #2196F3;
+            text-align: center;
+            margin-top: 20px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Display a loading animation while the page is loading
+    with st.spinner("Loading the chatbot interface..."):
+        time.sleep(2)  # Simulate loading time
+
+    # Fix asyncio event loop issue by ensuring a running loop
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+    # Update the UI to display only the percentage and likelihood of getting an answer
+    # Modify the Streamlit app to reflect the new requirement
     if prompt := st.chat_input("Ask a data science question!"):
         logging.debug(f"User input received: {prompt}")
-        # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Prepare chat history for the chatbot
         chat_history = [
             {"role": msg["role"], "content": msg["content"]}
             for msg in st.session_state.messages
         ]
 
-        # Evaluate question quality
+        # Predict question quality using Gemini
         logging.debug("Evaluating question quality for UI display")
-        quality_score = evaluate_question_quality(prompt, st.session_state.lgbm_model)
+        quality_score = predict_question_quality_with_gemini(prompt, quality_llm)
 
         # Display question quality in the UI
         with st.chat_message("assistant"):
-            if quality_score > 0.5:  # Threshold for good quality question
-                quality_percentage = round(quality_score * 100, 2)
-                st.markdown(
-                    f"**Question Quality:** {quality_percentage}%\n\nYour question is likely to receive an answer."
-                )
-            else:
-                st.markdown("**Question Quality:** Poor\n\nYour question might not receive an answer. Here are some suggestions:")
-                suggestions = st.session_state.chatbot.suggest_improvements(prompt)
-                st.markdown(suggestions)
+            quality_percentage = round(quality_score * 100, 2)
+            likelihood = "likely to receive an answer" if quality_score > 0.5 else "unlikely to receive an answer"
+            st.markdown(
+                f"<div class='question-quality'>Question Quality: {quality_percentage}%\n\nYour question is {likelihood}.</div>",
+                unsafe_allow_html=True
+            )
 
         # Get response from chatbot
         with st.chat_message("assistant"):
@@ -321,7 +376,6 @@ def main():
             )
             logging.debug(f"Chatbot response: {response['answer']}")
             st.markdown(response["answer"])
-            # Add assistant response to chat history
             st.session_state.messages.append(
                 {"role": "assistant", "content": response["answer"]}
             )
