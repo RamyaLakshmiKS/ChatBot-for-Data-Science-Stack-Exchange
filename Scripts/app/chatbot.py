@@ -273,12 +273,17 @@ def main():
         logging.debug("Initializing session state for chatbot")
         st.session_state.chatbot = initialize_chatbot()
 
+    # Store the LightGBM model in session state during chatbot initialization
+    if "lgbm_model" not in st.session_state:
+        logging.debug("Loading LightGBM model into session state")
+        st.session_state.lgbm_model = load_lgbm_model()
+
     # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Input prompt
+    # Modify the Streamlit app to display question quality
     if prompt := st.chat_input("Ask a data science question!"):
         logging.debug(f"User input received: {prompt}")
         # Add user message to chat history
@@ -292,6 +297,22 @@ def main():
             for msg in st.session_state.messages
         ]
 
+        # Evaluate question quality
+        logging.debug("Evaluating question quality for UI display")
+        quality_score = evaluate_question_quality(prompt, st.session_state.lgbm_model)
+
+        # Display question quality in the UI
+        with st.chat_message("assistant"):
+            if quality_score > 0.5:  # Threshold for good quality question
+                quality_percentage = round(quality_score * 100, 2)
+                st.markdown(
+                    f"**Question Quality:** {quality_percentage}%\n\nYour question is likely to receive an answer."
+                )
+            else:
+                st.markdown("**Question Quality:** Poor\n\nYour question might not receive an answer. Here are some suggestions:")
+                suggestions = st.session_state.chatbot.suggest_improvements(prompt)
+                st.markdown(suggestions)
+
         # Get response from chatbot
         with st.chat_message("assistant"):
             logging.debug("Getting response from chatbot")
@@ -304,6 +325,13 @@ def main():
             st.session_state.messages.append(
                 {"role": "assistant", "content": response["answer"]}
             )
+
+    # Disable Streamlit's file watcher for PyTorch modules
+    from streamlit.runtime.scriptrunner import add_script_run_ctx
+    import sys
+
+    if "torch" in sys.modules:
+        sys.modules["torch"].__path__ = []
 
 
 if __name__ == "__main__":
