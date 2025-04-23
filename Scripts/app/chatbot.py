@@ -23,69 +23,6 @@ logging.basicConfig(
 logging.debug("Setting Google API key from Streamlit secrets.")
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
-
-def load_and_process_data(
-    csv_path="./data/cleaned_stack_exchange_data.csv",
-):
-    logging.debug(f"Loading data from {csv_path}")
-    # Load CSV
-    df = pd.read_csv(csv_path)
-
-    logging.debug("Filtering for question posts (PostTypeId == 1)")
-    # Filter for question posts (PostTypeId == 1)
-    questions_df = df[df["PostTypeId"] == 1].copy()
-
-    logging.debug("Combining relevant fields into a single text field")
-    # Combine relevant fields into a single text field
-    questions_df["content"] = (
-        "Title: "
-        + questions_df["Title"].fillna("")
-        + "\n"
-        + "Body: "
-        + questions_df["Body"].fillna("")
-        + "\n"
-        + "Tags: "
-        + questions_df["Tags"].fillna("")
-    )
-
-    logging.debug("Creating LangChain Documents")
-    # Create LangChain Documents
-    documents = [
-        Document(
-            page_content=row["content"],
-            metadata={
-                "id": row["Id"],
-                "title": row["Title"],
-                "tags": row["Tags"],
-                "score": row["Score"],
-                "view_count": row["ViewCount"],
-            },
-        )
-        for _, row in questions_df.iterrows()
-    ]
-
-    logging.debug("Splitting documents into chunks")
-    # Split documents into chunks
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    texts = text_splitter.split_documents(documents)
-
-    logging.debug("Data processing complete")
-    return texts
-
-
-def create_vector_store(texts):
-    logging.debug("Creating embeddings using Google Generative AI")
-    # Create embeddings using Gemini
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-
-    logging.debug("Creating FAISS vector store")
-    # Create FAISS vector store
-    vector_store = FAISS.from_documents(texts, embeddings)
-
-    logging.debug("Vector store creation complete")
-    return vector_store
-
-
 def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
     logging.debug(f"Loading FAISS vector store from {input_path}")
     # Use HuggingFaceEmbeddings for consistency
@@ -101,7 +38,7 @@ def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
 
 
 # Load the LightGBM model during chatbot initialization
-def load_lgbm_model(model_path="./model/lgbm_model.pkl"):
+def load_lgbm_model(model_path=".\..\milestone_2\lgbm_model.pkl"):
     logging.debug(f"Loading LightGBM model from {model_path}")
     model = joblib.load(model_path)
     logging.debug("LightGBM model loaded successfully")
@@ -315,7 +252,6 @@ def extract_features_from_text(text):
 
     logging.debug(f"Extracted features: {features}")
     return features
-
 
 # Streamlit app
 def main():
