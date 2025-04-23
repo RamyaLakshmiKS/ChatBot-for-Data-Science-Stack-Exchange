@@ -53,15 +53,20 @@ def suggest_better_questions(question, vector_store):
     return "\n".join(suggestions)
 
 
+# Load the LightGBM model
+logging.debug("Loading LightGBM model for hybrid scoring and suggestions")
+lgbm_model_path = os.path.join(os.path.dirname(__file__), "model", "lgbm_model.pkl")
+lgbm_model = joblib.load(lgbm_model_path)
+
 # Add question improvement suggestions
-def suggest_improvements(question_text, model):
-    logging.debug("Generating improvement suggestions")
-    features = extract_features_from_text(question_text)  # Placeholder for actual feature extraction logic
+def suggest_improvements(question_text, model=lgbm_model):
+    logging.debug("Generating improvement suggestions using LightGBM")
+    features = extract_features_from_text(question_text)  # Extract features from text
     import shap
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values([features])
-    # Generate suggestions based on SHAP values (placeholder logic)
-    suggestions = generate_suggestions_from_shap(shap_values, features)  # Placeholder for actual suggestion logic
+    # Generate suggestions based on SHAP values
+    suggestions = generate_suggestions_from_shap(shap_values, features)
     return suggestions
 
 def generate_suggestions_from_shap(shap_values, features):
@@ -113,13 +118,13 @@ def extract_features_from_doc(doc):
     return features
 
 # Modify hybrid retrieval system
-def retrieve_documents(query, vector_store, model):
+def retrieve_documents(query, vector_store, model=lgbm_model):
     logging.debug("Retrieving documents with hybrid scoring")
     docs = vector_store.similarity_search(query, k=10)
     scored_docs = []
     for doc in docs:
-        features = extract_features_from_doc(doc)  # Placeholder for actual feature extraction logic
-        quality_score = model.predict_proba([features])[0][1]
+        features = extract_features_from_doc(doc)  # Extract features for LightGBM
+        quality_score = model.predict_proba([features])[0][1]  # Predict relevance score
         scored_docs.append((doc, quality_score))
     return sorted(scored_docs, key=lambda x: x[1], reverse=True)
 
@@ -187,6 +192,7 @@ def initialize_chatbot():
         return response
 
     logging.debug("Chatbot initialization complete")
+    chatbot.vector_store = vector_store  # Add vector_store to chatbot for suggestions
     return chatbot
 
 
@@ -223,6 +229,37 @@ def extract_features_from_text(text):
     avg_word_length = sum(len(word) for word in words) / len(words) if words else 0
     features.append(avg_word_length)
 
+    # Feature 6: Number of numeric characters
+    features.append(sum(c.isdigit() for c in text))
+
+    # Feature 7: Number of special characters
+    features.append(sum(not c.isalnum() and not c.isspace() for c in text))
+
+    # Feature 8: Proportion of unique words to total words
+    features.append(len(set(text.split())) / len(text.split()) if text.split() else 0)
+
+    # Feature 9: Proportion of numeric characters to total characters
+    features.append(sum(c.isdigit() for c in text) / len(text) if len(text) > 0 else 0)
+
+    # Feature 10: Proportion of special characters to total characters
+    features.append(sum(not c.isalnum() and not c.isspace() for c in text) / len(text) if len(text) > 0 else 0)
+
+    # Feature 11: Number of stop words (example: using a predefined list of stop words)
+    stop_words = {"the", "is", "in", "and", "to", "of"}  # Example stop words
+    features.append(sum(word in stop_words for word in text.lower().split()))
+
+    # Feature 12: Proportion of stop words to total words
+    features.append(sum(word in stop_words for word in text.lower().split()) / len(text.split()) if text.split() else 0)
+
+    # Feature 13: Length of the longest word
+    features.append(max(len(word) for word in text.split()) if text.split() else 0)
+
+    # Feature 14: Number of uppercase letters
+    features.append(sum(c.isupper() for c in text))
+
+    # Feature 15: Proportion of uppercase letters to total characters
+    features.append(sum(c.isupper() for c in text) / len(text) if len(text) > 0 else 0)
+
     logging.debug(f"Extracted features: {features}")
     return features
 
@@ -248,7 +285,7 @@ def predict_question_quality_with_gemini(question_text, llm):
         "presence of abbreviations, and whether the question can be easily understood without additional context.\n\n"
         "- 'score': A float score between 0.0 (poor quality) and 1.0 (excellent quality).\n"
         "- 'suggestions': A list of concise improvements if needed, such as expanding abbreviations, rephrasing for clarity, or adding missing context.\n\n"
-        "Be fair and constructive. Only give a high score (e.g., > 0.8) if the question is clearly worded, unambiguous, and self-contained."),
+        "Be fair and constructive. Only give a high score (e.g., > 0.7) if the question is clearly worded, unambiguous, and self-contained."),
         ("human", question_text)
     ]
     with st.spinner("Evaluating question quality..."):
@@ -266,6 +303,58 @@ def predict_question_quality_with_gemini(question_text, llm):
             logging.error(f"Unexpected error during quality prediction: {e}")
             traceback.print_exc()
             return 0.0
+
+# Add answer ranking functionality using LightGBM model
+def rank_answers(answers, model=lgbm_model):
+    """
+    Rank answers based on relevance and quality using the LightGBM model.
+
+    Args:
+        answers (list): A list of answers, where each answer is a dictionary containing 'content' and optional metadata.
+        model (LightGBM): The trained LightGBM model for ranking.
+
+    Returns:
+        list: A list of answers sorted by their predicted relevance and quality scores.
+    """
+    logging.debug("Ranking answers using LightGBM model")
+    ranked_answers = []
+
+    for answer in answers:
+        # Extract features from the answer content and metadata
+        features = extract_features_from_text(answer['content'])
+        if 'metadata' in answer:
+            features.append(answer['metadata'].get('upvotes', 0))  # Example: Upvotes
+            features.append(answer['metadata'].get('length', len(answer['content'])))  # Example: Length of the answer
+
+        # Predict the relevance score using the LightGBM model
+        relevance_score = model.predict_proba([features])[0][1]
+        ranked_answers.append((answer, relevance_score))
+
+    # Sort answers by relevance score in descending order
+    ranked_answers.sort(key=lambda x: x[1], reverse=True)
+
+    # Return only the answers, sorted by their scores
+    return [answer for answer, _ in ranked_answers]
+
+# Add user intent classification functionality using LightGBM model
+def classify_user_intent(question_text, model=lgbm_model):
+    """
+    Classify user questions into predefined categories using the LightGBM model.
+
+    Args:
+        question_text (str): The user's question.
+        model (LightGBM): The trained LightGBM model for classification.
+
+    Returns:
+        str: The predicted category of the question.
+    """
+    logging.debug("Classifying user intent using LightGBM model")
+    features = extract_features_from_text(question_text)  # Extract features from the question text
+    category_index = model.predict([features])[0]  # Predict the category index
+
+    # Map the category index to a human-readable category name
+    categories = ["Data Science", "Machine Learning", "Statistics", "Other"]
+    return categories[category_index]
 
 # Ensure asyncio event loop is properly initialized
 try:
@@ -343,8 +432,26 @@ def main():
 
     # Update the UI to display only the percentage and likelihood of getting an answer
     # Modify the Streamlit app to reflect the new requirement
+    # Modify the chatbot logic to handle high and low-quality questions
+    # Modify chatbot logic to handle greetings and farewells
     if prompt := st.chat_input("Ask a data science question!"):
         logging.debug(f"User input received: {prompt}")
+
+        # Handle greetings and farewells
+        greetings = ["hi", "hello"]
+        farewells = ["bye", "goodbye", "see you"]
+
+        if prompt.lower() in greetings:
+            with st.chat_message("assistant"):
+                st.markdown("Hi! How can I assist you today?")
+            return
+
+        if prompt.lower() in farewells:
+            with st.chat_message("assistant"):
+                st.markdown("Goodbye! Have a great day!")
+            return
+
+        # Process other inputs
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -354,30 +461,46 @@ def main():
             for msg in st.session_state.messages
         ]
 
-        # Predict question quality using Gemini
-        logging.debug("Evaluating question quality for UI display")
-        quality_score = predict_question_quality_with_gemini(prompt, quality_llm)
-
-        # Display question quality in the UI
+        # Display question category, quality, and suggestions as an integrated response
         with st.chat_message("assistant"):
+            question_category = classify_user_intent(prompt, lgbm_model)
+            quality_score = predict_question_quality_with_gemini(prompt, quality_llm)
             quality_percentage = round(quality_score * 100, 2)
             likelihood = "likely to receive an answer" if quality_score > 0.5 else "unlikely to receive an answer"
+            suggestions = suggest_better_questions(prompt, st.session_state.chatbot.vector_store)
+
             st.markdown(
-                f"<div class='question-quality'>Question Quality: {quality_percentage}%\n\nYour question is {likelihood}.</div>",
+                f"<div class='question-category'>Question Category: {question_category}</div>\n"
+                f"<div class='question-quality'>Question Quality: {quality_percentage}%\nYour question is {likelihood}.</div>\n"
+                f"<div class='suggestions'>Suggestions: {suggestions}</div>",
                 unsafe_allow_html=True
             )
 
-        # Get response from chatbot
-        with st.chat_message("assistant"):
-            logging.debug("Getting response from chatbot")
-            response = st.session_state.chatbot(
-                {"question": prompt, "chat_history": chat_history}
-            )
-            logging.debug(f"Chatbot response: {response['answer']}")
-            st.markdown(response["answer"])
-            st.session_state.messages.append(
-                {"role": "assistant", "content": response["answer"]}
-            )
+        # Handle LLM response separately
+        if quality_score >= 0.5:
+            # Get response from chatbot for high-quality question
+            with st.chat_message("assistant"):
+                logging.debug("Getting response from chatbot")
+                response = st.session_state.chatbot(
+                    {"question": prompt, "chat_history": chat_history}
+                )
+                logging.debug(f"Chatbot response: {response['answer']}")
+                st.markdown(response["answer"])
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": response["answer"]}
+                )
+        else:
+            # Still respond to the user question
+            with st.chat_message("assistant"):
+                logging.debug("Getting response from chatbot despite low-quality question")
+                response = st.session_state.chatbot(
+                    {"question": prompt, "chat_history": chat_history}
+                )
+                logging.debug(f"Chatbot response: {response['answer']}")
+                st.markdown(response["answer"])
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": response["answer"]}
+                )
 
     # Disable Streamlit's file watcher for PyTorch modules
     from streamlit.runtime.scriptrunner import add_script_run_ctx
