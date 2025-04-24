@@ -5,8 +5,31 @@
 This project involves analyzing the Data Science Stack Exchange dataset to gain insights into user engagement, post trends, and interaction patterns. The findings will help in developing a conversational agent for improved recommendations and responses.
 
 **Repository Structure:**  
-- reports/ – Contains the submitted project report with detailed findings and analysis.  
-- scripts/ – Includes the Python notebook used for data preprocessing, EDA, and visualization.
+- **Data/**: Contains the dataset and processed CSV files.
+  - `metadata.txt`: Metadata about the dataset.
+  - `csv_output/`: Cleaned CSV files for analysis, including:
+    - `Badges_cleaned.csv`
+    - `Comments_cleaned.csv`
+    - `Posts_cleaned.csv`
+    - `Users_cleaned.csv`, etc.
+
+- **Reports/**: Includes detailed milestone reports.
+  - `Milestone1.pdf`: Covers data collection, preprocessing, and EDA.
+  - `Milestone2.pdf`: Focuses on feature engineering, selection, and modeling.
+  - `Milestone3.pdf`: Discusses the integration of models into the conversational agent.
+
+- **Scripts/**: Contains code and resources for analysis and application development.
+  - `Milestone-1.ipynb`: Jupyter notebook for Milestone 1.
+  - `Milestone-2.ipynb`: Jupyter notebook for Milestone 2.
+  - `Project PPT.pdf`: Presentation summarizing the project.
+  - `app/`: Directory for the chatbot application.
+    - `chatbot.py`: Main Streamlit app for the chatbot.
+    - `ingest_data.py`: Script for data ingestion and FAISS index creation.
+    - `requirements.txt`: Python dependencies for the app.
+    - `data/`: Contains the cleaned dataset and FAISS index files.
+    - `model/`: Includes the trained LightGBM model (`lgbm_model.pkl`).
+
+For more details about the chatbot application, refer to the [app/README.md](Scripts/app/README.md) file.
 
 **Dataset:**  
 The dataset used for this project is available on Kaggle:
@@ -72,9 +95,59 @@ Milestone 2 successfully built and evaluated predictive models, with LightGBM se
 
 ---
 
-### How to Use
+## Milestone 3: Tool Development
 
-1. Navigate to the `reports/` folder to review the project documentation.
-2. Check the `scripts/` folder for the Jupyter notebooks containing code and visualizations.
-3. Download the dataset from the above link and place it in the working directory for analysis.
+**Summary:**
+
+In Milestone 3, the focus was on developing a Retrieval-Augmented Generation (RAG)-based conversational agent to provide accurate and explainable responses to data science-related queries. The chatbot application was built using Streamlit and integrates the LightGBM model trained in Milestone 2 for predictive capabilities. The application leverages FAISS (Facebook AI Similarity Search) for efficient similarity search and retrieval of relevant posts from the dataset.
+
+**Key Components in `app/` Directory:**
+
+- `chatbot.py`: The main Streamlit application that serves as the user interface for the chatbot. It allows users to input queries and receive responses based on the RAG pipeline.
+- `ingest_data.py`: A script to preprocess the dataset and create a FAISS index for efficient similarity search.
+- `requirements.txt`: Lists all the Python dependencies required to run the chatbot application.
+- `data/`:
+  - `cleaned_stack_exchange_data.csv`: The cleaned dataset used for retrieval.
+  - `faiss_index/`: Contains the FAISS index files (`index.faiss` and `index.pkl`) for similarity search.
+- `model/`:
+  - `lgbm_model.pkl`: The trained LightGBM model used for predictions.
+
+**Features of the Chatbot Application:**
+
+- **Query Understanding**: The chatbot processes user queries and retrieves relevant posts from the dataset using FAISS.
+- **Predictive Insights**: Integrates the LightGBM model to predict the likelihood of a post receiving answers or engagement.
+- **Explainability**: Provides SHAP-based explanations for the model's predictions, enhancing transparency and trust.
+- **Interactive Interface**: Built with Streamlit, offering a user-friendly and responsive interface.
+
+**Next Steps:**
+
+1. **Deployment**:
+   - Deploy the chatbot application on a cloud platform (e.g., AWS, Azure, or Heroku) for public access.
+   - Ensure scalability and reliability of the application.
+
+2. **Enhancements**:
+   - Improve the RAG pipeline by incorporating additional datasets or fine-tuning the FAISS index.
+   - Explore advanced NLP techniques (e.g., transformers) to enhance query understanding and response generation.
+
+3. **User Testing**:
+   - Conduct user testing to gather feedback on the chatbot's performance and usability.
+   - Iterate on the design and functionality based on user feedback.
+
+---
+
+## How to Use
+
+1. **Dataset Preparation**:
+   - Download the dataset from [Kaggle](https://www.kaggle.com/datasets/aneeshtickoo/data-science-stack-exchange/data?select=metadata.txt).
+   - Place the dataset in the `Data/` directory.
+
+2. **Run Analysis**:
+   - Use the Jupyter notebooks in `Scripts/` for data preprocessing, EDA, and modeling.
+
+3. **Chatbot Application**:
+   - Navigate to `Scripts/app/`.
+   - Install dependencies using `pip install -r requirements.txt`.
+   - Run the chatbot with `streamlit run chatbot.py`.
+
+---
 

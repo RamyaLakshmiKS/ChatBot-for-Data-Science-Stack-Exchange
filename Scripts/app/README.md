@@ -1,19 +1,49 @@
-# Chatbot Application
+# Data Science Stack Exchange Chatbot
 
-This chatbot application is designed to answer data science-related questions using a Retrieval-Augmented Generation (RAG) approach. It combines a retrieval system to fetch relevant documents and a generation system to create conversational responses. The chatbot is tailored to assist users with data science concepts, techniques, and best practices.
+This application is an advanced chatbot designed to answer data science-related questions using a Retrieval-Augmented Generation (RAG) approach. It leverages both a document retrieval system (FAISS) and large language models (Google Gemini) to provide accurate, context-aware, and conversational responses. The system is tailored for Stack Exchange-style Q&A, with additional features for question quality assessment and improvement suggestions.
+
+---
 
 ## Features
 
-- Expertise in data science-related topics.
-- Retrieval-Augmented Generation for accurate and context-aware responses.
-- Easy-to-use interface for loading datasets and asking questions.
-- Customizable to work with any dataset in CSV format.
+- **Retrieval-Augmented Generation (RAG):** Combines semantic search (FAISS) with generative LLMs for high-quality, contextually relevant answers.
+- **Question Quality Assessment:** Uses a Gemini LLM to evaluate the quality of user questions and predict the likelihood of receiving an answer.
+- **Question Category Classification:** Classifies questions into categories (e.g., Data Science, Machine Learning, Statistics) using a LightGBM model.
+- **Improvement Suggestions:** Provides actionable suggestions to improve question quality based on retrieved context and model feedback.
+- **Interactive Streamlit UI:** Modern, user-friendly interface for seamless Q&A interactions.
+- **Custom Data Ingestion:** Easily ingest and index new datasets using the provided ingestion script.
+
+---
+
+## Directory Structure
+
+```
+Scripts/app/
+│
+├── chatbot.py           # Main Streamlit app and chatbot logic
+├── ingest_data.py       # Data ingestion and FAISS index creation
+├── requirements.txt     # Python dependencies
+├── README.md            # This documentation
+├── __init__.py
+│
+├── data/
+│   ├── cleaned_stack_exchange_data.csv
+│   └── faiss_index/
+│       └── final_index.faiss/
+│           ├── index.faiss
+│           └── index.pkl
+│
+└── model/
+    └── lgbm_model.pkl   # Trained LightGBM model for classification and ranking
+```
+
+---
 
 ## Setup Instructions
 
 ### 1. Install Dependencies
 
-Ensure you have Python installed on your system. Install the required dependencies by running the following command in the `Scripts/app` directory:
+Navigate to the `Scripts/app` directory and install the required packages:
 
 ```bash
 pip install -r requirements.txt
@@ -21,68 +51,82 @@ pip install -r requirements.txt
 
 ### 2. Data Preparation
 
-Prepare a dataset in CSV format with a column named `content`. The dataset should contain data science-related content. Place the dataset in the `Scripts/app/data/` directory or any other location of your choice.
+Prepare your dataset in CSV format (e.g., `cleaned_stack_exchange_data.csv`). The expected columns include `Title`, `Body`, `Tags`, `Score`, `ViewCount`, and other Stack Exchange post metadata.
 
-### 3. Data Ingestion
+Place your cleaned dataset in the `Scripts/app/data/` directory.
 
-Use the `ingest_data.py` script to preprocess the dataset and build the FAISS index for efficient retrieval. Run the following command:
+### 3. Data Ingestion & Indexing
 
-```bash
-python ingest_data.py --data_path data/cleaned_stack_exchange_data.csv
-```
-
-Replace `data/cleaned_stack_exchange_data.csv` with the path to your dataset if it is located elsewhere.
-
-### 4. Running the Chatbot with Streamlit
-
-To start the chatbot application using Streamlit, follow these steps:
-
-1. Ensure the FAISS index is built and the dataset is prepared.
-2. Run the Streamlit app using the following command:
+Build the FAISS index for efficient semantic retrieval:
 
 ```bash
-streamlit run app.py
+python ingest_data.py
 ```
 
-3. Open the provided URL in your browser to interact with the chatbot.
+This will process the CSV and create a FAISS index in `data/faiss_index/final_index.faiss/`.
 
-### Example Streamlit Code
+### 4. Model Preparation
 
-Run the chatbot locally by running the following command in the app directory.
+Ensure the trained LightGBM model (`lgbm_model.pkl`) is present in the `model/` directory. This model is used for question classification and ranking.
 
-```
+### 5. Configure Google API Key
+
+To enable Gemini LLM features, add your Google API key:
+
+1. Create a `.streamlit` directory in your project root (if it doesn't exist):
+
+    ```bash
+    mkdir -p .streamlit
+    ```
+
+2. Create a `secrets.toml` file inside `.streamlit`:
+
+    ```toml
+    [google]
+    GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"
+    ```
+
+Replace `YOUR_GOOGLE_API_KEY` with your actual key from Google AI Studio.
+
+### 6. Run the Chatbot
+
+Start the Streamlit app:
+
+```bash
 streamlit run chatbot.py
 ```
 
-### 6. Adding Google API Key
+Open the provided URL in your browser to interact with the chatbot.
 
-To enable the chatbot to use Google AI services, you need to add your Google API key. Follow these steps:
+---
 
-1. Create a `.streamlit` directory in the root of your project if it doesn't already exist:
+## How It Works
 
-```bash
-mkdir -p .streamlit
-```
+- **User Input:** Enter a data science question in the chat interface.
+- **Category & Quality:** The system classifies the question, predicts its quality, and provides suggestions for improvement.
+- **Retrieval:** Relevant Stack Exchange posts are retrieved using FAISS and HuggingFace embeddings.
+- **LLM Response:** Gemini LLM generates a conversational answer, leveraging both retrieved context and chat history.
+- **Feedback:** The UI displays question category, quality score, improvement suggestions, and the LLM's answer.
 
-2. Create a `secrets.toml` file inside the `.streamlit` directory:
+---
 
-```bash
-touch .streamlit/secrets.toml
-```
+## Customization & Extensibility
 
-3. Add your Google API key to the `secrets.toml` file in the following format:
+- **Dataset:** You can ingest any Stack Exchange-style dataset by updating the CSV and re-running `ingest_data.py`.
+- **Model:** Retrain or replace the LightGBM model as needed for different classification or ranking tasks.
+- **UI:** Modify `chatbot.py` to customize the Streamlit interface or add new features.
 
-```toml
-[google]
-GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"
-```
+---
 
-Replace `YOUR_GOOGLE_API_KEY` with the actual API key obtained from Google AI Studio.
+## Troubleshooting
 
-4. Save the file. The Streamlit app will automatically load the API key from this file when it runs.
+- Ensure all dependencies are installed and the FAISS index is built before running the chatbot.
+- For issues with Google API access, verify your API key in `.streamlit/secrets.toml`.
+- For further customization, review and edit `chatbot.py` and `ingest_data.py`.
 
-## Additional Notes
+---
 
-- Ensure the FAISS index is built before running the chatbot.
-- The chatbot is designed to work with datasets containing data science-related content. For other domains, you may need to retrain or fine-tune the model.
-- For troubleshooting or further customization, refer to the `chatbot.py` and `ingest_data.py` scripts.
+## Credits
+
+- Built with [Streamlit](https://streamlit.io/), [LangChain](https://www.langchain.com/), [FAISS](https://faiss.ai/), [HuggingFace Transformers](https://huggingface.co/), and [Google Gemini](https://ai.google.dev/).
+- Data sourced from [Kaggle](https://www.kaggle.com/datasets/aneeshtickoo/data-science-stack-exchange?select=metadata.txt).

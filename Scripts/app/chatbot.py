@@ -10,6 +10,7 @@ from langchain.chains import create_history_aware_retriever, create_retrieval_ch
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_huggingface import HuggingFaceEmbeddings
+from sklearn.calibration import LabelEncoder
 import streamlit as st
 import logging
 import torch
@@ -199,7 +200,7 @@ def initialize_chatbot():
 def extract_features_from_text(text):
     """
     Extract features from the input text for the LightGBM model.
-    This function should replicate the feature engineering steps used during model training.
+    This function replicates the feature engineering steps used during model training.
 
     Args:
         text (str): The input text (e.g., question content).
@@ -209,56 +210,68 @@ def extract_features_from_text(text):
     """
     logging.debug("Extracting features from text")
 
-    # Example feature extraction logic (replace with actual logic from model training):
+    # Example feature extraction logic based on model training:
     features = []
 
-    # Feature 1: Length of the text
-    features.append(len(text))
+    # Feature 1: Length of the post body text
+    features.append(len(text))  # body_length
 
-    # Feature 2: Number of words in the text
-    features.append(len(text.split()))
+    # Feature 2: Length of the post title (assuming title is part of the text input)
+    title = text.split("\n")[0] if "\n" in text else text  # Extract title from text
+    features.append(len(title))  # title_length
 
-    # Feature 3: Number of unique words
-    features.append(len(set(text.split())))
+    # Feature 3: Number of tags (assuming tags are part of the text input as a comma-separated list)
+    tags = text.split("Tags:")[-1].strip() if "Tags:" in text else ""
+    features.append(len(tags.split(",")))  # tag_count
 
-    # Feature 4: Presence of question mark
-    features.append(1 if '?' in text else 0)
+    # Feature 4: Encoded primary tag (assuming the first tag is the primary tag)
+    primary_tag = tags.split(",")[0] if tags else "none"
+    le = LabelEncoder()
+    primary_tag_encoded = le.fit_transform([primary_tag])[0]
+    features.append(primary_tag_encoded)  # primary_tag_encoded
 
-    # Feature 5: Average word length
-    words = text.split()
-    avg_word_length = sum(len(word) for word in words) / len(words) if words else 0
-    features.append(avg_word_length)
+    # Feature 5: Post score (assuming score is part of the text input as a key-value pair)
+    score = int(text.split("Score:")[-1].strip()) if "Score:" in text else 0
+    features.append(score)  # Score
 
-    # Feature 6: Number of numeric characters
-    features.append(sum(c.isdigit() for c in text))
+    # Feature 6: View count (assuming view count is part of the text input as a key-value pair)
+    view_count = int(text.split("ViewCount:")[-1].strip()) if "ViewCount:" in text else 0
+    features.append(view_count)  # ViewCount
 
-    # Feature 7: Number of special characters
-    features.append(sum(not c.isalnum() and not c.isspace() for c in text))
+    # Feature 7: Comment count (assuming comment count is part of the text input as a key-value pair)
+    comment_count = int(text.split("CommentCount:")[-1].strip()) if "CommentCount:" in text else 0
+    features.append(comment_count)  # CommentCount
 
-    # Feature 8: Proportion of unique words to total words
-    features.append(len(set(text.split())) / len(text.split()) if text.split() else 0)
+    # Feature 8: Favorite count (assuming favorite count is part of the text input as a key-value pair)
+    favorite_count = int(text.split("FavoriteCount:")[-1].strip()) if "FavoriteCount:" in text else 0
+    features.append(favorite_count)  # FavoriteCount
 
-    # Feature 9: Proportion of numeric characters to total characters
-    features.append(sum(c.isdigit() for c in text) / len(text) if len(text) > 0 else 0)
+    # Feature 9: User reputation (assuming reputation is part of the text input as a key-value pair)
+    reputation = int(text.split("Reputation:")[-1].strip()) if "Reputation:" in text else 0
+    features.append(reputation)  # Reputation
 
-    # Feature 10: Proportion of special characters to total characters
-    features.append(sum(not c.isalnum() and not c.isspace() for c in text) / len(text) if len(text) > 0 else 0)
+    # Feature 10: User views (assuming views are part of the text input as a key-value pair)
+    user_views = int(text.split("Views:")[-1].strip()) if "Views:" in text else 0
+    features.append(user_views)  # Views
 
-    # Feature 11: Number of stop words (example: using a predefined list of stop words)
-    stop_words = {"the", "is", "in", "and", "to", "of"}  # Example stop words
-    features.append(sum(word in stop_words for word in text.lower().split()))
+    # Feature 11: User upvotes (assuming upvotes are part of the text input as a key-value pair)
+    upvotes = int(text.split("UpVotes:")[-1].strip()) if "UpVotes:" in text else 0
+    features.append(upvotes)  # UpVotes
 
-    # Feature 12: Proportion of stop words to total words
-    features.append(sum(word in stop_words for word in text.lower().split()) / len(text.split()) if text.split() else 0)
+    # Feature 12: User downvotes (assuming downvotes are part of the text input as a key-value pair)
+    downvotes = int(text.split("DownVotes:")[-1].strip()) if "DownVotes:" in text else 0
+    features.append(downvotes)  # DownVotes
 
-    # Feature 13: Length of the longest word
-    features.append(max(len(word) for word in text.split()) if text.split() else 0)
+    # Feature 13: Sum of comment scores (assuming comment scores are part of the text input as a key-value pair)
+    comment_score_sum = int(text.split("CommentScoreSum:")[-1].strip()) if "CommentScoreSum:" in text else 0
+    features.append(comment_score_sum)  # comment_score_sum
 
-    # Feature 14: Number of uppercase letters
-    features.append(sum(c.isupper() for c in text))
+    # Feature 14: Total number of comments (assuming comment count is part of the text input as a key-value pair)
+    features.append(comment_count)  # comment_count (already extracted above)
 
-    # Feature 15: Proportion of uppercase letters to total characters
-    features.append(sum(c.isupper() for c in text) / len(text) if len(text) > 0 else 0)
+    # Feature 15: Number of edits (assuming edit count is part of the text input as a key-value pair)
+    edit_count = int(text.split("EditCount:")[-1].strip()) if "EditCount:" in text else 0
+    features.append(edit_count)  # edit_count
 
     logging.debug(f"Extracted features: {features}")
     return features
