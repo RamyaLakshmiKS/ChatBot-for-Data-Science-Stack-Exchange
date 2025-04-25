@@ -1,17 +1,16 @@
 # Data Science Stack Exchange Chatbot
 
-This application is an advanced chatbot designed to answer data science-related questions using a Retrieval-Augmented Generation (RAG) approach. It leverages both a document retrieval system (FAISS) and large language models (Google Gemini) to provide accurate, context-aware, and conversational responses. The system is tailored for Stack Exchange-style Q&A, with additional features for question quality assessment and improvement suggestions.
+This application is an advanced chatbot designed to answer data science-related questions using a Retrieval-Augmented Generation (RAG) approach. It leverages both a document retrieval system (FAISS) and large language models (Google Gemini) to provide accurate, context-aware, and conversational responses. The system is tailored for Stack Exchange-style Q&A, focusing on ranking and providing relevant answers.
 
 ---
 
 ## Features
 
 - **Retrieval-Augmented Generation (RAG):** Combines semantic search (FAISS) with generative LLMs for high-quality, contextually relevant answers.
-- **Question Quality Assessment:** Uses a Gemini LLM to evaluate the quality of user questions and predict the likelihood of receiving an answer.
-- **Question Category Classification:** Classifies questions into categories (e.g., Data Science, Machine Learning, Statistics) using a LightGBM model.
-- **Improvement Suggestions:** Provides actionable suggestions to improve question quality based on retrieved context and model feedback.
 - **Interactive Streamlit UI:** Modern, user-friendly interface for seamless Q&A interactions.
 - **Custom Data Ingestion:** Easily ingest and index new datasets using the provided ingestion script.
+- **Answer Ranking:** Ranks answers based on relevance and quality using a pre-trained LightGBM model.
+- **Related Question Suggestions:** Suggests related questions based on user queries.
 
 ---
 
@@ -23,7 +22,7 @@ Scripts/app/
 ├── chatbot.py           # Main Streamlit app and chatbot logic
 ├── ingest_data.py       # Data ingestion and FAISS index creation
 ├── requirements.txt     # Python dependencies
-├── README.md            # This documentation
+├── README.md            
 ├── __init__.py
 │
 ├── data/
@@ -34,7 +33,7 @@ Scripts/app/
 │           └── index.pkl
 │
 └── model/
-    └── lgbm_model.pkl   # Trained LightGBM model for classification and ranking
+    └── lgbm_model.pkl   # Trained LightGBM model 
 ```
 
 ---
@@ -102,11 +101,29 @@ Open the provided URL in your browser to interact with the chatbot.
 
 ## How It Works
 
-- **User Input:** Enter a data science question in the chat interface.
-- **Category & Quality:** The system classifies the question, predicts its quality, and provides suggestions for improvement.
-- **Retrieval:** Relevant Stack Exchange posts are retrieved using FAISS and HuggingFace embeddings.
-- **LLM Response:** Gemini LLM generates a conversational answer, leveraging both retrieved context and chat history.
-- **Feedback:** The UI displays question category, quality score, improvement suggestions, and the LLM's answer.
+### **Data Ingestion**
+- The `ingest_data.py` script processes the cleaned Stack Exchange dataset, splits documents into manageable chunks, and creates a FAISS vector store for efficient semantic search.
+- It uses `HuggingFaceEmbeddings` for embedding generation and supports parallel processing for scalability.
+
+### **Chatbot Logic**
+- The `chatbot.py` script initializes the chatbot with:
+  - A FAISS vector store for document retrieval.
+  - A Google Gemini LLM for generating conversational responses.
+  - A LightGBM model for ranking answers and filtering low-quality content.
+- The chatbot supports:
+  - Retrieval of relevant documents based on user queries.
+  - Ranking and scoring of answers using the LightGBM model.
+  - Suggestions for related questions.
+
+### **Answer Ranking**
+- Answers are ranked based on features such as content length, upvotes, and metadata.
+- The LightGBM model predicts relevance scores, which are used to sort answers.
+
+### **Streamlit UI**
+- The Streamlit app provides an interactive interface for:
+  - Asking questions.
+  - Viewing chat history.
+  - Displaying ranked answers and related questions.
 
 ---
 
