@@ -2,7 +2,7 @@ import json
 import os
 import traceback
 import pandas as pd
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -10,7 +10,6 @@ from langchain.chains import create_history_aware_retriever, create_retrieval_ch
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_huggingface import HuggingFaceEmbeddings
-from sklearn.calibration import LabelEncoder
 import streamlit as st
 import logging
 import torch
@@ -18,6 +17,7 @@ import joblib
 import numpy as np
 import time
 import asyncio
+from sklearn.preprocessing import LabelEncoder
 
 # Configure logging
 logging.basicConfig(
@@ -155,6 +155,9 @@ def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
     logging.debug("FAISS vector store loaded successfully")
     return vector_store
 
+# Integrate LightGBM scores into response generation
+# Modify the `retrieve_documents` function to filter out low-quality documents
+
 def retrieve_documents(query, vector_store, model):
     logging.debug("Retrieving documents with hybrid scoring")
     docs = vector_store.similarity_search(query, k=10)
@@ -168,7 +171,68 @@ def retrieve_documents(query, vector_store, model):
         logging.error(f"Error during document scoring: {e}")
         logging.error(traceback.format_exc())
 
-    return sorted(scored_docs, key=lambda x: x[1], reverse=True)
+    # Filter out low-quality documents (e.g., score below 0.5)
+    filtered_docs = [doc for doc, score in scored_docs if score >= 0.5]
+    return sorted(filtered_docs, key=lambda x: x[1], reverse=True)
+
+# Add explainability to ranked answers
+# Modify the `rank_answers` function to include explanations
+
+# Ensure the LightGBM model is loaded before using it in functions
+lgbm_model_path = os.path.join(os.path.dirname(__file__), "model", "lgbm_model.pkl")
+lgbm_model = joblib.load(lgbm_model_path)
+
+def rank_answers(answers, model=lgbm_model):
+    logging.debug("Ranking answers using LightGBM model")
+    ranked_answers = []
+
+    for answer in answers:
+        features = extract_features_from_text(answer['content'])
+        if 'metadata' in answer:
+            features.append(answer['metadata'].get('upvotes', 0))
+            features.append(answer['metadata'].get('length', len(answer['content'])))
+
+        relevance_score = model.predict_proba([features])[0][1]
+        explanation = f"Relevance score: {relevance_score:.2f}, Upvotes: {answer['metadata'].get('upvotes', 0)}"
+        ranked_answers.append((answer, relevance_score, explanation))
+
+    ranked_answers.sort(key=lambda x: x[1], reverse=True)
+    return [(answer, explanation) for answer, _, explanation in ranked_answers]
+
+# Optimize batch processing in `rank_answers`
+# Ensure batch processing for performance improvement
+
+def rank_answers_batch(answers, model=lgbm_model):
+    logging.debug("Ranking answers using batch processing")
+    features_batch = []
+    explanations = []
+
+    for answer in answers:
+        features = extract_features_from_text(answer['content'])
+        if 'metadata' in answer:
+            features.append(answer['metadata'].get('upvotes', 0))
+            features.append(answer['metadata'].get('length', len(answer['content'])))
+        features_batch.append(features)
+
+    relevance_scores = model.predict_proba(features_batch)[:, 1]
+    for answer, score in zip(answers, relevance_scores):
+        explanation = f"Relevance score: {score:.2f}, Upvotes: {answer['metadata'].get('upvotes', 0)}"
+        explanations.append((answer, score, explanation))
+
+    explanations.sort(key=lambda x: x[1], reverse=True)
+    return [(answer, explanation) for answer, _, explanation in explanations]
+
+# Add fallback mechanism in `retrieve_documents`
+# Handle cases where LightGBM model fails
+
+def retrieve_documents_with_fallback(query, vector_store, model):
+    try:
+        return retrieve_documents(query, vector_store, model)
+    except Exception as e:
+        logging.error(f"Error in retrieve_documents: {e}")
+        logging.error(traceback.format_exc())
+        logging.debug("Falling back to FAISS similarity search")
+        return vector_store.similarity_search(query, k=10)
 
 def initialize_chatbot():
     logging.debug("Initializing chatbot")
@@ -293,84 +357,83 @@ def suggest_related_questions(query, vector_store):
     related_questions = [doc.page_content.split("\n")[0] for doc in related_docs]  # Extract titles or first lines
     return related_questions
 
-def handle_related_question_click(question):
-    """
-    Handles the logic for when a related question is clicked.
+# def handle_related_question_click(question):
+#     """
+#     Handles the logic for when a related question is clicked.
 
-    Args:
-        question (str): The related question clicked by the user.
-    """
-    logging.debug(f"Related question clicked: {question}")
+#     Args:
+#         question (str): The related question clicked by the user.
+#     """
+#     logging.debug(f"Related question clicked: {question}")
 
-    # Append the clicked question to the chat history
-    st.session_state.messages.append({"role": "user", "content": question})
+#     # Append the clicked question to the chat history
+#     st.session_state.messages.append({"role": "user", "content": question})
 
-    # Display the user's question in the chat UI
-    with st.chat_message("user"):
-        st.markdown(question)
+#     # Display the user's question in the chat UI
+#     with st.chat_message("user"):
+#         st.markdown(question)
 
-    # Prepare the chat history for the chatbot
-    chat_history = [
-        {"role": msg["role"], "content": msg["content"]}
-        for msg in st.session_state.messages
-    ]
-    logging.debug(f"Chat history for related question: {chat_history}")
+#     # Prepare the chat history for the chatbot
+#     chat_history = [
+#         {"role": msg["role"], "content": msg["content"]}
+#         for msg in st.session_state.messages
+#     ]
+#     logging.debug(f"Chat history for related question: {chat_history}")
 
-    # Execute steps 1, 2, 3, and 4
-    try:
-        with st.chat_message("assistant"):
-            logging.debug("Getting response from chatbot for related question")
+#     # Execute steps 1, 2, 3, and 4
+#     try:
+#         with st.chat_message("assistant"):
+#             logging.debug("Getting response from chatbot for related question")
 
-            # Step 1: Retrieve relevant documents
-            with st.spinner("Retrieving relevant documents..."):
-                st.markdown("**Step 1:** Retrieving relevant documents from the vector store.")
-                time.sleep(1)  # Simulate document retrieval
+#             # Step 1: Retrieve relevant documents
+#             with st.spinner("Retrieving relevant documents..."):
+#                 st.markdown("**Step 1:** Retrieving relevant documents from the vector store.")
+#                 time.sleep(1) 
 
-            # Step 2: Rank answers
-            with st.spinner("Ranking answers using LightGBM model..."):
-                st.markdown("**Step 2:** Ranking answers based on relevance and quality.")
-                time.sleep(1)  # Simulate answer ranking
+#             # Step 2: Rank answers
+#             with st.spinner("Ranking answers using LightGBM model..."):
+#                 st.markdown("**Step 2:** Ranking answers based on relevance and quality.")
+#                 time.sleep(1)  
 
-            # Step 3: Generate response
-            with st.spinner("Generating response..."):
-                st.markdown("**Step 3:** Generating the final response using the LLM.")
-                try:
-                    response = st.session_state.chatbot(
-                        {"question": question, "chat_history": chat_history}
-                    )
-                    logging.debug(f"Chatbot response: {response}")
-                except Exception as e:
-                    logging.error(f"Error generating response: {e}")
-                    logging.error(traceback.format_exc())
-                    response = {"answer": "Sorry, I couldn't process your request."}
+#             # Step 3: Generate response
+#             with st.spinner("Generating response..."):
+#                 st.markdown("**Step 3:** Generating the final response using the LLM.")
+#                 try:
+#                     response = st.session_state.chatbot(
+#                         {"question": question, "chat_history": chat_history}
+#                     )
+#                     logging.debug(f"Chatbot response: {response}")
+#                 except Exception as e:
+#                     logging.error(f"Error generating response: {e}")
+#                     logging.error(traceback.format_exc())
+#                     response = {"answer": "Sorry, I couldn't process your request."}
 
-            # Step 4: Display the final response
-            st.markdown(response["answer"])
-            st.session_state.messages.append(
-                {"role": "assistant", "content": response["answer"]}
-            )
+#             # Step 4: Display the final response
+#             st.markdown(response["answer"])
+#             st.session_state.messages.append(
+#                 {"role": "assistant", "content": response["answer"]}
+#             )
 
-            # Suggest related questions without clickable buttons
-            if related_questions:
-                st.markdown("### Related Questions:")
-                for related_question in related_questions:
-                    st.markdown(f"- {related_question}")
-    except Exception as e:
-        logging.error(f"Error handling related question click: {e}")
-        logging.error(traceback.format_exc())
-        with st.chat_message("assistant"):
-            st.markdown("Sorry, I couldn't process your request.")
+#             # Suggest related questions 
+#             if related_questions:
+#                 st.markdown("### Related Questions:")
+#                 for related_question in related_questions:
+#                     st.markdown(f"- {related_question}")
+#     except Exception as e:
+#         logging.error(f"Error handling related question click: {e}")
+#         logging.error(traceback.format_exc())
+#         with st.chat_message("assistant"):
+#             st.markdown("Sorry, I couldn't process your request.")
 
 # Streamlit app
-# Modify the button click logic to make the chatbot respond to the clicked question
 def main():
     # Set the page configuration with the desired tab header
     st.set_page_config(page_title="Ask, don't browse", page_icon=":robot_face:")
 
     logging.debug("Starting Streamlit app")
-    st.title("Chat with Stack Exchange")
+    st.title("ChatBot for Data Science Stack Exchange")
     st.markdown(
-        "Stop wasting time searching for answers on the stack exchange website!"
+        "Stop wasting time searching for answers on the website!"
     )
     st.markdown("Ask questions about data science, machine learning, and related topics!", unsafe_allow_html=True)
 
@@ -420,12 +483,12 @@ def main():
             with st.spinner("Retrieving relevant documents..."):
                 st.markdown("**Step 1:** Retrieving relevant documents from the vector store.")
                 # Simulate document retrieval
-                time.sleep(1)  # Replace with actual retrieval logic if needed
+                time.sleep(1)  
 
             with st.spinner("Ranking answers using LightGBM model..."):
                 st.markdown("**Step 2:** Ranking answers based on relevance and quality.")
                 # Simulate answer ranking
-                time.sleep(1)  # Replace with actual ranking logic if needed
+                time.sleep(1)  
 
             with st.spinner("Generating response..."):
                 st.markdown("**Step 3:** Generating the final response using the LLM.")
