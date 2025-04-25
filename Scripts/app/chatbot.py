@@ -363,11 +363,11 @@ def main():
     st.set_page_config(page_title="Ask, don't browse", page_icon=":robot_face:")
 
     logging.debug("Starting Streamlit app")
-    st.title("ChatBot for Data Science Stack Exchange")
+    st.title("🤖 ChatBot for Data Science Stack Exchange")
     st.markdown(
         "Stop wasting time searching for answers on the website!"
     )
-    st.markdown("Ask questions about data science, machine learning, and related topics!", unsafe_allow_html=True)
+    st.markdown("Ask questions about data science, machine learning & related topics!", unsafe_allow_html=True)
 
     # Initialize session state for chat history and chatbot
     if "messages" not in st.session_state:
@@ -413,7 +413,7 @@ def main():
 
             # Show the process in the UI
             with st.spinner("Retrieving relevant documents..."):
-                st.markdown("**Step 1:** Retrieving relevant documents from the vector store.")
+                st.markdown("**Step 1:** Retrieving relevant documents")
                 # Simulate document retrieval
                 time.sleep(1)  
 
@@ -423,7 +423,7 @@ def main():
                 time.sleep(1)  
 
             with st.spinner("Generating response..."):
-                st.markdown("**Step 3:** Generating the final response using the LLM.")
+                st.markdown("**Step 3:** Generating the final response")
                 # Get the chatbot response
                 response = st.session_state.chatbot(
                     {"question": prompt, "chat_history": chat_history}
