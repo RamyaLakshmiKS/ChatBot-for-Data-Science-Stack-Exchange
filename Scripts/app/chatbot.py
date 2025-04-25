@@ -2,7 +2,7 @@ import json
 import os
 import traceback
 import pandas as pd
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -10,7 +10,6 @@ from langchain.chains import create_history_aware_retriever, create_retrieval_ch
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_huggingface import HuggingFaceEmbeddings
-from sklearn.calibration import LabelEncoder
 import streamlit as st
 import logging
 import torch
@@ -18,6 +17,7 @@ import joblib
 import numpy as np
 import time
 import asyncio
+from sklearn.preprocessing import LabelEncoder
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +27,120 @@ logging.basicConfig(
 # Replace hardcoded API key with Streamlit secrets
 logging.debug("Setting Google API key from Streamlit secrets.")
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
+
+# Ensure asyncio event loop is properly initialized
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+def extract_features_from_text(text):
+    """
+    Extract features from the input text for the LightGBM model.
+    This function replicates the feature engineering steps used during model training.
+
+    Args:
+        text (str): The input text (e.g., question content).
+
+    Returns:
+        list: A list of features extracted from the text.
+    """
+    logging.debug("Extracting features from text")
+
+    if not isinstance(text, str):
+        raise ValueError("Input text must be a string.")
+
+    # Example feature extraction logic based on model training:
+    features = []
+
+    # Feature 1: Length of the post body text
+    features.append(len(text))  # body_length
+
+    # Feature 2: Length of the post title 
+    title = text.split("\n")[0] if "\n" in text else text  # Extract title from text
+    features.append(len(title))  # title_length
+
+    # Feature 3: Number of tags 
+    tags = text.split("Tags:")[-1].strip() if "Tags:" in text else ""
+    features.append(len(tags.split(",")))  # tag_count
+
+    # Feature 4: Encoded primary tag 
+    primary_tag = tags.split(",")[0] if tags else "none"
+    le = LabelEncoder()
+    le.fit(["none", primary_tag])  # Fit with a minimal set to avoid errors
+    primary_tag_encoded = le.transform([primary_tag])[0]
+    features.append(primary_tag_encoded)  # primary_tag_encoded
+
+    # Feature 5: Post score 
+    score = int(text.split("Score:")[-1].strip()) if "Score:" in text else 0
+    features.append(score)  # Score
+
+    # Feature 6: View count 
+    view_count = int(text.split("ViewCount:")[-1].strip()) if "ViewCount:" in text else 0
+    features.append(view_count)  # ViewCount
+
+    # Feature 7: Comment count 
+    comment_count = int(text.split("CommentCount:")[-1].strip()) if "CommentCount:" in text else 0
+    features.append(comment_count)  # CommentCount
+
+    # Feature 8: Favorite count 
+    favorite_count = int(text.split("FavoriteCount:")[-1].strip()) if "FavoriteCount:" in text else 0
+    features.append(favorite_count)  # FavoriteCount
+
+    # Feature 9: User reputation 
+    reputation = int(text.split("Reputation:")[-1].strip()) if "Reputation:" in text else 0
+    features.append(reputation)  # Reputation
+
+    # Feature 10: User views 
+    user_views = int(text.split("Views:")[-1].strip()) if "Views:" in text else 0
+    features.append(user_views)  # Views
+
+    # Feature 11: User upvotes 
+    upvotes = int(text.split("UpVotes:")[-1].strip()) if "UpVotes:" in text else 0
+    features.append(upvotes)  # UpVotes
+
+    # Feature 12: User downvotes 
+    downvotes = int(text.split("DownVotes:")[-1].strip()) if "DownVotes:" in text else 0
+    features.append(downvotes)  # DownVotes
+
+    # Feature 13: Sum of comment scores 
+    comment_score_sum = int(text.split("CommentScoreSum:")[-1].strip()) if "CommentScoreSum:" in text else 0
+    features.append(comment_score_sum)  # comment_score_sum
+
+    # Feature 14: Total number of comments 
+    features.append(comment_count)  # comment_count 
+
+    # Feature 15: Number of edits 
+    edit_count = int(text.split("EditCount:")[-1].strip()) if "EditCount:" in text else 0
+    features.append(edit_count)  # edit_count
+
+    logging.debug(f"Extracted features: {features}")
+    return features
+
+def extract_features_from_doc(doc):
+    """
+    Extract features from a document for scoring with the LightGBM model.
+
+    Args:
+        doc (Document): A LangChain Document object.
+
+    Returns:
+        list: A list of features extracted from the document.
+    """
+    logging.debug("Extracting features from document")
+
+    if not isinstance(doc, Document):
+        raise ValueError("Input must be a Document instance.")
+
+    # Example feature extraction logic (replace with actual logic from model training):
+    text = doc.page_content
+    features = extract_features_from_text(text)  # Reuse the text-based feature extraction
+
+    # Add metadata-based features (if applicable)
+    features.append(doc.metadata.get("score", 0))  # Example: Score of the post
+    features.append(doc.metadata.get("view_count", 0))  # Example: View count of the post
+
+    return features
 
 def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
     logging.debug(f"Loading FAISS vector store from {input_path}")
@@ -41,100 +155,91 @@ def load_vector_store(input_path="./data/faiss_index/final_index.faiss"):
     logging.debug("FAISS vector store loaded successfully")
     return vector_store
 
+# Integrate LightGBM scores into response generation
+# Modify the `retrieve_documents` function to filter out low-quality documents
 
-# Suggest better questions based on vector store context
-def suggest_better_questions(question, vector_store):
-    logging.debug("Suggesting better questions based on vector store context")
-    # Retrieve context from the vector store
-    retrieved_docs = vector_store.similarity_search(question, k=3)
-    suggestions = [
-        f"Consider asking about: {doc.metadata.get('title', 'No title')}"
-        for doc in retrieved_docs
-    ]
-    return "\n".join(suggestions)
-
-
-# Load the LightGBM model
-logging.debug("Loading LightGBM model for hybrid scoring and suggestions")
-lgbm_model_path = os.path.join(os.path.dirname(__file__), "model", "lgbm_model.pkl")
-lgbm_model = joblib.load(lgbm_model_path)
-
-# Add question improvement suggestions
-def suggest_improvements(question_text, model=lgbm_model):
-    logging.debug("Generating improvement suggestions using LightGBM")
-    features = extract_features_from_text(question_text)  # Extract features from text
-    import shap
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values([features])
-    # Generate suggestions based on SHAP values
-    suggestions = generate_suggestions_from_shap(shap_values, features)
-    return suggestions
-
-def generate_suggestions_from_shap(shap_values, features):
-    """
-    Generate suggestions for improving a question based on SHAP values.
-
-    Args:
-        shap_values (list): SHAP values for the features.
-        features (list): The original feature values.
-
-    Returns:
-        str: Suggestions for improving the question.
-    """
-    logging.debug("Generating suggestions from SHAP values")
-    suggestions = []
-
-    # Example logic: Check which features have the most negative impact
-    for i, shap_value in enumerate(shap_values[0]):
-        if shap_value < -0.1:  # Threshold for significant negative impact
-            if i == 0:
-                suggestions.append("Consider making your question longer.")
-            elif i == 1:
-                suggestions.append("Add more details to your question.")
-            elif i == 3:
-                suggestions.append("Ensure your question is clear and ends with a question mark.")
-
-    return "\n".join(suggestions)
-
-def extract_features_from_doc(doc):
-    """
-    Extract features from a document for scoring with the LightGBM model.
-
-    Args:
-        doc (Document): A LangChain Document object.
-
-    Returns:
-        list: A list of features extracted from the document.
-    """
-    logging.debug("Extracting features from document")
-
-    # Example feature extraction logic (replace with actual logic from model training):
-    text = doc.page_content
-    features = extract_features_from_text(text)  # Reuse the text-based feature extraction
-
-    # Add metadata-based features (if applicable)
-    features.append(doc.metadata.get("score", 0))  # Example: Score of the post
-    features.append(doc.metadata.get("view_count", 0))  # Example: View count of the post
-
-    return features
-
-# Modify hybrid retrieval system
-def retrieve_documents(query, vector_store, model=lgbm_model):
+def retrieve_documents(query, vector_store, model):
     logging.debug("Retrieving documents with hybrid scoring")
     docs = vector_store.similarity_search(query, k=10)
     scored_docs = []
-    for doc in docs:
-        features = extract_features_from_doc(doc)  # Extract features for LightGBM
-        quality_score = model.predict_proba([features])[0][1]  # Predict relevance score
-        scored_docs.append((doc, quality_score))
-    return sorted(scored_docs, key=lambda x: x[1], reverse=True)
 
+    try:
+        features_batch = [extract_features_from_doc(doc) for doc in docs]
+        quality_scores = model.predict_proba(features_batch)[:, 1]  # Batch prediction
+        scored_docs = list(zip(docs, quality_scores))
+    except Exception as e:
+        logging.error(f"Error during document scoring: {e}")
+        logging.error(traceback.format_exc())
+
+    # Filter out low-quality documents (e.g., score below 0.5)
+    filtered_docs = [doc for doc, score in scored_docs if score >= 0.5]
+    return sorted(filtered_docs, key=lambda x: x[1], reverse=True)
+
+# Add explainability to ranked answers
+# Modify the `rank_answers` function to include explanations
+
+# Ensure the LightGBM model is loaded before using it in functions
+lgbm_model_path = os.path.join(os.path.dirname(__file__), "model", "lgbm_model.pkl")
+lgbm_model = joblib.load(lgbm_model_path)
+
+def rank_answers(answers, model=lgbm_model):
+    logging.debug("Ranking answers using LightGBM model")
+    ranked_answers = []
+
+    for answer in answers:
+        features = extract_features_from_text(answer['content'])
+        if 'metadata' in answer:
+            features.append(answer['metadata'].get('upvotes', 0))
+            features.append(answer['metadata'].get('length', len(answer['content'])))
+
+        relevance_score = model.predict_proba([features])[0][1]
+        explanation = f"Relevance score: {relevance_score:.2f}, Upvotes: {answer['metadata'].get('upvotes', 0)}"
+        ranked_answers.append((answer, relevance_score, explanation))
+
+    ranked_answers.sort(key=lambda x: x[1], reverse=True)
+    return [(answer, explanation) for answer, _, explanation in ranked_answers]
+
+# Optimize batch processing in `rank_answers`
+# Ensure batch processing for performance improvement
+
+def rank_answers_batch(answers, model=lgbm_model):
+    logging.debug("Ranking answers using batch processing")
+    features_batch = []
+    explanations = []
+
+    for answer in answers:
+        features = extract_features_from_text(answer['content'])
+        if 'metadata' in answer:
+            features.append(answer['metadata'].get('upvotes', 0))
+            features.append(answer['metadata'].get('length', len(answer['content'])))
+        features_batch.append(features)
+
+    relevance_scores = model.predict_proba(features_batch)[:, 1]
+    for answer, score in zip(answers, relevance_scores):
+        explanation = f"Relevance score: {score:.2f}, Upvotes: {answer['metadata'].get('upvotes', 0)}"
+        explanations.append((answer, score, explanation))
+
+    explanations.sort(key=lambda x: x[1], reverse=True)
+    return [(answer, explanation) for answer, _, explanation in explanations]
+
+# Add fallback mechanism in `retrieve_documents`
+# Handle cases where LightGBM model fails
+
+def retrieve_documents_with_fallback(query, vector_store, model):
+    try:
+        return retrieve_documents(query, vector_store, model)
+    except Exception as e:
+        logging.error(f"Error in retrieve_documents: {e}")
+        logging.error(traceback.format_exc())
+        logging.debug("Falling back to FAISS similarity search")
+        return vector_store.similarity_search(query, k=10)
 
 def initialize_chatbot():
     logging.debug("Initializing chatbot")
 
     logging.debug("Loading final FAISS index")
     vector_store = load_vector_store()
+    logging.debug(f"Vector store loaded: {vector_store}")
 
     logging.debug("Initializing Gemini LLM")
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
@@ -160,8 +265,8 @@ def initialize_chatbot():
 
     logging.debug("Creating retrieval chain")
     qa_system_prompt = (
-        "You are an assistant for answering questions from Stack Exchange website. Use "
-        "the following pieces of retrieved context to answer the "
+        "You are an assistant for answering questions from Data Science Stack Exchange website. Always respond in English."
+        "Use the following pieces of retrieved context to answer the "
         "question. If you don't know the answer, try to infer it from the chat history "
         "or provide a helpful response based on the context. Keep the answer "
         "concise and DO NOT add stuff from your memory unless it's absolutely necessary to address the question. "
@@ -180,6 +285,7 @@ def initialize_chatbot():
     retrieval_chain = create_retrieval_chain(
         history_aware_retriever, question_answer_chain
     )
+    logging.debug(f"Retrieval chain created: {retrieval_chain}")
 
     def chatbot(input_data):
         question = input_data["question"]
@@ -189,133 +295,19 @@ def initialize_chatbot():
             "input": question,
             "chat_history": chat_history,
         }
+        logging.debug(f"Formatted input for retrieval chain: {formatted_input}")
         response = retrieval_chain.invoke(formatted_input)
+        logging.debug(f"Response from retrieval chain: {response}")
         return response
 
     logging.debug("Chatbot initialization complete")
     chatbot.vector_store = vector_store  # Add vector_store to chatbot for suggestions
     return chatbot
 
-
-def extract_features_from_text(text):
-    """
-    Extract features from the input text for the LightGBM model.
-    This function replicates the feature engineering steps used during model training.
-
-    Args:
-        text (str): The input text (e.g., question content).
-
-    Returns:
-        list: A list of features extracted from the text.
-    """
-    logging.debug("Extracting features from text")
-
-    # Example feature extraction logic based on model training:
-    features = []
-
-    # Feature 1: Length of the post body text
-    features.append(len(text))  # body_length
-
-    # Feature 2: Length of the post title (assuming title is part of the text input)
-    title = text.split("\n")[0] if "\n" in text else text  # Extract title from text
-    features.append(len(title))  # title_length
-
-    # Feature 3: Number of tags (assuming tags are part of the text input as a comma-separated list)
-    tags = text.split("Tags:")[-1].strip() if "Tags:" in text else ""
-    features.append(len(tags.split(",")))  # tag_count
-
-    # Feature 4: Encoded primary tag (assuming the first tag is the primary tag)
-    primary_tag = tags.split(",")[0] if tags else "none"
-    le = LabelEncoder()
-    primary_tag_encoded = le.fit_transform([primary_tag])[0]
-    features.append(primary_tag_encoded)  # primary_tag_encoded
-
-    # Feature 5: Post score (assuming score is part of the text input as a key-value pair)
-    score = int(text.split("Score:")[-1].strip()) if "Score:" in text else 0
-    features.append(score)  # Score
-
-    # Feature 6: View count (assuming view count is part of the text input as a key-value pair)
-    view_count = int(text.split("ViewCount:")[-1].strip()) if "ViewCount:" in text else 0
-    features.append(view_count)  # ViewCount
-
-    # Feature 7: Comment count (assuming comment count is part of the text input as a key-value pair)
-    comment_count = int(text.split("CommentCount:")[-1].strip()) if "CommentCount:" in text else 0
-    features.append(comment_count)  # CommentCount
-
-    # Feature 8: Favorite count (assuming favorite count is part of the text input as a key-value pair)
-    favorite_count = int(text.split("FavoriteCount:")[-1].strip()) if "FavoriteCount:" in text else 0
-    features.append(favorite_count)  # FavoriteCount
-
-    # Feature 9: User reputation (assuming reputation is part of the text input as a key-value pair)
-    reputation = int(text.split("Reputation:")[-1].strip()) if "Reputation:" in text else 0
-    features.append(reputation)  # Reputation
-
-    # Feature 10: User views (assuming views are part of the text input as a key-value pair)
-    user_views = int(text.split("Views:")[-1].strip()) if "Views:" in text else 0
-    features.append(user_views)  # Views
-
-    # Feature 11: User upvotes (assuming upvotes are part of the text input as a key-value pair)
-    upvotes = int(text.split("UpVotes:")[-1].strip()) if "UpVotes:" in text else 0
-    features.append(upvotes)  # UpVotes
-
-    # Feature 12: User downvotes (assuming downvotes are part of the text input as a key-value pair)
-    downvotes = int(text.split("DownVotes:")[-1].strip()) if "DownVotes:" in text else 0
-    features.append(downvotes)  # DownVotes
-
-    # Feature 13: Sum of comment scores (assuming comment scores are part of the text input as a key-value pair)
-    comment_score_sum = int(text.split("CommentScoreSum:")[-1].strip()) if "CommentScoreSum:" in text else 0
-    features.append(comment_score_sum)  # comment_score_sum
-
-    # Feature 14: Total number of comments (assuming comment count is part of the text input as a key-value pair)
-    features.append(comment_count)  # comment_count (already extracted above)
-
-    # Feature 15: Number of edits (assuming edit count is part of the text input as a key-value pair)
-    edit_count = int(text.split("EditCount:")[-1].strip()) if "EditCount:" in text else 0
-    features.append(edit_count)  # edit_count
-
-    logging.debug(f"Extracted features: {features}")
-    return features
-
-# Replace LightGBM model with Gemini model for question quality prediction
-# Update the chatbot initialization to use Gemini for quality prediction
-logging.debug("Initializing Gemini LLM for question quality prediction")
-quality_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
-
-# Define a function to predict question quality using Gemini
-
-# Fix the input format for Gemini model and ensure proper response parsing
-# Update the prompt for question quality prediction to handle abbreviations and well-structured questions
-# Fix the response parsing logic to correctly extract the quality percentage
-def predict_question_quality_with_gemini(question_text, llm):
-    logging.debug("Predicting question quality using Gemini")
-    prompt = [
-        ("system", "You are a question quality evaluator. "
-        "Provide a high quality score between 0 and 1. "
-        "With 1 being awarded to a question closely related to questions that will be asked in data stack exchange and 0 being awarded to a question that is not related to data stack exchange. "
-        "You will only give a JSON response with the following format: {\"score\": <float>}. Nothing else."
-        "Your task is to assess how well-structured, "
-        "clear, and complete a given question is. Pay attention to the use of grammar, clarity, "
-        "presence of abbreviations, and whether the question can be easily understood without additional context.\n\n"
-        "- 'score': A float score between 0.0 (poor quality) and 1.0 (excellent quality).\n"
-        "- 'suggestions': A list of concise improvements if needed, such as expanding abbreviations, rephrasing for clarity, or adding missing context.\n\n"
-        "Be fair and constructive. Only give a high score (e.g., > 0.7) if the question is clearly worded, unambiguous, and self-contained."),
-        ("human", question_text)
-    ]
-    with st.spinner("Evaluating question quality..."):
-        try:
-            response = llm.invoke(prompt)
-            logging.debug(f"Gemini response: {response}")
-            # Ensure the response is parsed correctly to extract the quality score
-            answer = json.loads(response.content)
-            logging.debug(f"Parsed Gemini response: {answer}")
-            return answer.get("score", 0.0)
-        except ValueError:
-            logging.error("Failed to parse quality score from Gemini response")
-            return 0.0
-        except Exception as e:
-            logging.error(f"Unexpected error during quality prediction: {e}")
-            traceback.print_exc()
-            return 0.0
+# Load the LightGBM model
+logging.debug("Loading LightGBM model for hybrid scoring and suggestions")
+lgbm_model_path = os.path.join(os.path.dirname(__file__), "model", "lgbm_model.pkl")
+lgbm_model = joblib.load(lgbm_model_path)
 
 # Add answer ranking functionality using LightGBM model
 def rank_answers(answers, model=lgbm_model):
@@ -349,31 +341,21 @@ def rank_answers(answers, model=lgbm_model):
     # Return only the answers, sorted by their scores
     return [answer for answer, _ in ranked_answers]
 
-# Add user intent classification functionality using LightGBM model
-def classify_user_intent(question_text, model=lgbm_model):
+def suggest_related_questions(query, vector_store):
     """
-    Classify user questions into predefined categories using the LightGBM model.
+    Suggest related questions based on the user's query.
 
     Args:
-        question_text (str): The user's question.
-        model (LightGBM): The trained LightGBM model for classification.
+        query (str): The user's query.
+        vector_store (FAISS): The FAISS vector store for similarity search.
 
     Returns:
-        str: The predicted category of the question.
+        list: A list of related questions.
     """
-    logging.debug("Classifying user intent using LightGBM model")
-    features = extract_features_from_text(question_text)  # Extract features from the question text
-    category_index = model.predict([features])[0]  # Predict the category index
-
-    # Map the category index to a human-readable category name
-    categories = ["Data Science", "Machine Learning", "Statistics", "Other"]
-    return categories[category_index]
-
-# Ensure asyncio event loop is properly initialized
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+    logging.debug("Suggesting related questions")
+    related_docs = vector_store.similarity_search(query, k=3)  # Retrieve top 3 related documents
+    related_questions = [doc.page_content.split("\n")[0] for doc in related_docs]  # Extract titles or first lines
+    return related_questions
 
 # Streamlit app
 def main():
@@ -381,9 +363,9 @@ def main():
     st.set_page_config(page_title="Ask, don't browse", page_icon=":robot_face:")
 
     logging.debug("Starting Streamlit app")
-    st.title("Chat with Stack Exchange")
+    st.title("ChatBot for Data Science Stack Exchange")
     st.markdown(
-        "Stop wasting time searching for answers on the stack exchange website!"
+        "Stop wasting time searching for answers on the website!"
     )
     st.markdown("Ask questions about data science, machine learning, and related topics!", unsafe_allow_html=True)
 
@@ -395,76 +377,27 @@ def main():
         logging.debug("Initializing session state for chatbot")
         st.session_state.chatbot = initialize_chatbot()
 
-    # Remove references to the LightGBM model and ensure only Gemini is used for question quality prediction
-    # Remove LightGBM model loading from session state
-    if "lgbm_model" in st.session_state:
-        del st.session_state["lgbm_model"]
-
     # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Add aesthetic features to the UI
-    st.markdown(
-        """
-        <style>
-        .stApp {
-            background-color: #f5f5f5;
-            font-family: 'Arial', sans-serif;
-        }
-        .question-quality {
-            font-size: 18px;
-            font-weight: bold;
-            color: #4CAF50;
-        }
-        .suggestions {
-            font-size: 16px;
-            color: #FF5722;
-        }
-        .loading {
-            font-size: 20px;
-            color: #2196F3;
-            text-align: center;
-            margin-top: 20px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    # Chatbot starts with greeting
+    if not st.session_state.messages:
+        with st.chat_message("assistant"):
+            st.markdown("Hi! How can I assist you today?")
 
-    # Display a loading animation while the page is loading
-    with st.spinner("Loading the chatbot interface..."):
-        time.sleep(2)  # Simulate loading time
-
-    # Fix asyncio event loop issue by ensuring a running loop
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
-    # Update the UI to display only the percentage and likelihood of getting an answer
-    # Modify the Streamlit app to reflect the new requirement
-    # Modify the chatbot logic to handle high and low-quality questions
-    # Modify chatbot logic to handle greetings and farewells
-    if prompt := st.chat_input("Ask a data science question!"):
+    # Handle user input
+    if prompt := st.chat_input("Ask a question!"):
         logging.debug(f"User input received: {prompt}")
 
-        # Handle greetings and farewells
-        greetings = ["hi", "hello"]
-        farewells = ["bye", "goodbye", "see you"]
-
-        if prompt.lower() in greetings:
-            with st.chat_message("assistant"):
-                st.markdown("Hi! How can I assist you today?")
-            return
-
-        if prompt.lower() in farewells:
+        # Check if the user says "Bye" or "Goodbye"
+        if "bye" in prompt.lower() or "goodbye" in prompt.lower():
             with st.chat_message("assistant"):
                 st.markdown("Goodbye! Have a great day!")
-            return
+            st.stop()
 
-        # Process other inputs
+        # Process user input
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -474,46 +407,41 @@ def main():
             for msg in st.session_state.messages
         ]
 
-        # Display question category, quality, and suggestions as an integrated response
+        # Display chatbot answer separately
         with st.chat_message("assistant"):
-            question_category = classify_user_intent(prompt, lgbm_model)
-            quality_score = predict_question_quality_with_gemini(prompt, quality_llm)
-            quality_percentage = round(quality_score * 100, 2)
-            likelihood = "likely to receive an answer" if quality_score > 0.5 else "unlikely to receive an answer"
-            suggestions = suggest_better_questions(prompt, st.session_state.chatbot.vector_store)
+            logging.debug("Getting response from chatbot")
 
-            st.markdown(
-                f"<div class='question-category'>Question Category: {question_category}</div>\n"
-                f"<div class='question-quality'>Question Quality: {quality_percentage}%\nYour question is {likelihood}.</div>\n"
-                f"<div class='suggestions'>Suggestions: {suggestions}</div>",
-                unsafe_allow_html=True
+            # Show the process in the UI
+            with st.spinner("Retrieving relevant documents..."):
+                st.markdown("**Step 1:** Retrieving relevant documents from the vector store.")
+                # Simulate document retrieval
+                time.sleep(1)  
+
+            with st.spinner("Ranking answers using LightGBM model..."):
+                st.markdown("**Step 2:** Ranking answers based on relevance and quality.")
+                # Simulate answer ranking
+                time.sleep(1)  
+
+            with st.spinner("Generating response..."):
+                st.markdown("**Step 3:** Generating the final response using the LLM.")
+                # Get the chatbot response
+                response = st.session_state.chatbot(
+                    {"question": prompt, "chat_history": chat_history}
+                )
+
+            # Display the final response
+            logging.debug(f"Chatbot response: {response['answer']}")
+            st.markdown(response["answer"])
+            st.session_state.messages.append(
+                {"role": "assistant", "content": response["answer"]}
             )
 
-        # Handle LLM response separately
-        if quality_score >= 0.5:
-            # Get response from chatbot for high-quality question
-            with st.chat_message("assistant"):
-                logging.debug("Getting response from chatbot")
-                response = st.session_state.chatbot(
-                    {"question": prompt, "chat_history": chat_history}
-                )
-                logging.debug(f"Chatbot response: {response['answer']}")
-                st.markdown(response["answer"])
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": response["answer"]}
-                )
-        else:
-            # Still respond to the user question
-            with st.chat_message("assistant"):
-                logging.debug("Getting response from chatbot despite low-quality question")
-                response = st.session_state.chatbot(
-                    {"question": prompt, "chat_history": chat_history}
-                )
-                logging.debug(f"Chatbot response: {response['answer']}")
-                st.markdown(response["answer"])
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": response["answer"]}
-                )
+            # Suggest top 2 related questions 
+            related_questions = suggest_related_questions(prompt, st.session_state.chatbot.vector_store)
+            if related_questions:
+                st.markdown("### Related Questions:")
+                for related_question in related_questions[:2]:  # Limit to top 2 questions
+                    st.markdown(f"- {related_question}")
 
     # Disable Streamlit's file watcher for PyTorch modules
     from streamlit.runtime.scriptrunner import add_script_run_ctx
@@ -521,7 +449,6 @@ def main():
 
     if "torch" in sys.modules:
         sys.modules["torch"].__path__ = []
-
 
 if __name__ == "__main__":
     main()
