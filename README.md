@@ -113,8 +113,8 @@ The chatbot leverages the Google Gemini LLM for generating conversational respon
 
 ## Presentation and Tool Demo
 
-- **Presentation Video**: [Link to Presentation Video](#)
-- **Tool Demo**: [Link to Tool Demo](#)
+- **Presentation Video**: [Link to Presentation Video](https://uflorida-my.sharepoint.com/:v:/g/personal/ra_kuppasundarar_ufl_edu/ESLMM7JRBAlAr_SRTYHCKj0BE4IgW48ZHEWDAMT8xmUoyQ?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=6DIUqH)
+- **Tool Demo**: [Link to Tool Demo](https://uflorida-my.sharepoint.com/:v:/r/personal/ra_kuppasundarar_ufl_edu/Documents/Ids/Videos/Demo.mp4?csf=1&web=1&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=hIrqQc)
 
 ---
 
